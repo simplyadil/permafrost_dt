@@ -1,0 +1,10 @@
+{
+  "timestamp": "2025-10-25T19:47:54.941138",
+  "status": "viz_ready",
+  "data_summary": {
+    "fdm_points": 156,
+    "pinn_points": 0,
+    "inversion_points": 0
+  },
+  "parameters": {}
+}

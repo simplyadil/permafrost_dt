@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PermafrostBoundaryForcingMessage",
+  "description": "Boundary forcing message containing surface temperature Ts(t).",
+  "type": "object",
+  "properties": {
+    "timestamp": { "type": "string", "format": "date-time" },
+    "time_days": { "type": "number" },
+    "Ts": { "type": "number", "description": "Surface temperature at 0m depth" }
+  },
+  "required": ["time_days", "Ts"]
+}

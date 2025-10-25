@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "FDMOutputMessage",
+  "description": "Notification message from FDM simulation service",
+  "type": "object",
+  "properties": {
+    "timestamp": { "type": "string", "format": "date-time" },
+    "time_days": { "type": "number" },
+    "status": { "type": "string" }
+  },
+  "required": ["time_days", "status"]
+}

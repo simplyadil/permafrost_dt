@@ -1,6 +1,13 @@
+import os
+import sys
 import time
 import datetime
 from threading import Thread
+
+# Add project root to Python path
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
 from services.common.messaging import RabbitMQClient
 from services.common.influx_utils import InfluxHelper
@@ -21,8 +28,32 @@ def test_obs_io_pipeline():
     3. Waits for processing.
     4. Queries InfluxDB to verify data ingestion.
     """
+    # Ensure services are running
+    print("\nℹ️  Checking if services are running...")
+    try:
+        import requests
+        # Check RabbitMQ
+        r = requests.get("http://localhost:15672/api/overview", 
+                        auth=('permafrost', 'permafrost'),
+                        timeout=2)
+        if r.status_code != 200:
+            raise Exception(f"RabbitMQ returned status {r.status_code}")
+            
+        # Check InfluxDB
+        r = requests.get("http://localhost:8086/health", timeout=2)
+        if r.status_code != 200:
+            raise Exception(f"InfluxDB returned status {r.status_code}")
+            
+        print("✅ Services are running")
+    except Exception as e:
+        print(f"❌ Error checking services: {str(e)}")
+        print("💡 Try running these commands first:")
+        print("   python software/starup/docker_services/start_rabbitmq.py")
+        print("   python software/starup/docker_services/start_influxdb.py")
+        raise
 
     # Start service in background
+    print("\nℹ️  Starting observation ingestion service...")
     thread = Thread(target=run_service, daemon=True)
     thread.start()
     time.sleep(3)

@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PINNForwardOutputMessage",
+  "description": "Output message from PINN forward training/service",
+  "type": "object",
+  "properties": {
+    "timestamp": { "type": "string", "format": "date-time" },
+    "time_days": { "type": "number" },
+    "status": { "type": "string" },
+    "model_path": { "type": "string" }
+  },
+  "required": ["time_days", "status", "model_path"]
+}

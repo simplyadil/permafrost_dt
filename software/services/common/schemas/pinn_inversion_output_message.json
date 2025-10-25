@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PINNInversionOutputMessage",
+  "description": "Output message for the PINN inversion service",
+  "type": "object",
+  "properties": {
+    "timestamp": { "type": "string", "format": "date-time" },
+    "status": { "type": "string" },
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "lambda_f": { "type": "number" },
+        "C_f": { "type": "number" },
+        "eta": { "type": "number" },
+        "b": { "type": "number" },
+        "T_nabla": { "type": "number" }
+      }
+    }
+  },
+  "required": ["status", "parameters"]
+}

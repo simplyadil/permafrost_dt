@@ -18,14 +18,40 @@ def start(log_file: str, compose_dir: str, test_func, sleep_time: int, max_attem
     compose_path = os.path.join(compose_dir, "docker-compose.yml")
 
     print(f"🚀 Starting service using compose at {compose_path}")
+    
+    # Start the service and wait for process to complete
     with open(log_file, "w") as log:
-        subprocess.Popen(["docker", "compose", "-f", compose_path, "up", "-d"], cwd=compose_dir, stdout=log, stderr=log)
-
+        result = subprocess.run(
+            ["docker", "compose", "-f", compose_path, "up", "-d"],
+            cwd=compose_dir,
+            stdout=log,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        
+        if result.returncode != 0:
+            print(f"❌ Failed to start service: {result.stderr}")
+            raise RuntimeError(f"Docker Compose failed with exit code {result.returncode}")
+    
+    print("📝 Checking container logs...")
+    container_name = os.path.basename(os.path.dirname(compose_path))
+    
     for i in range(max_attempts):
         if test_func():
-            print("✅ Service ready.")
             return
+        
+        # Show recent container logs if available
+        logs = subprocess.run(
+            ["docker", "logs", "--tail", "5", container_name + "-server"],
+            capture_output=True,
+            text=True
+        )
+        if logs.returncode == 0 and logs.stdout.strip():
+            print(f"📋 Recent logs:\n{logs.stdout.strip()}")
+            
         print(f"⏳ Waiting for service... ({i+1}/{max_attempts})")
         time.sleep(sleep_time)
 
-    raise RuntimeError("❌ Service failed to start in time.")
+    print("❌ Service failed to start in time.")
+    print("💡 Try checking the logs in", os.path.abspath(log_file))
+    raise RuntimeError("Service failed to start in time.")
