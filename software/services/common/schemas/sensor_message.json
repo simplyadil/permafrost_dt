@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PermafrostSensorMessage",
+  "description": "Schema for sensor data message representing a single timestep from the physical twin.",
+  "type": "object",
+  "properties": {
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO timestamp of the reading (optional if using time_days only)"
+    },
+    "time_days": {
+      "type": "number",
+      "description": "Elapsed time since start of measurement in days"
+    },
+    "temperature_0m": { "type": "number", "description": "Temperature at surface (0m depth)" },
+    "temperature_1m": { "type": "number", "description": "Temperature at 1m depth" },
+    "temperature_2m": { "type": "number", "description": "Temperature at 2m depth" },
+    "temperature_3m": { "type": "number", "description": "Temperature at 3m depth" },
+    "temperature_4m": { "type": "number", "description": "Temperature at 4m depth" },
+    "temperature_5m": { "type": "number", "description": "Temperature at 5m depth" }
+  },
+  "required": [
+    "time_days",
+    "temperature_0m",
+    "temperature_1m",
+    "temperature_2m",
+    "temperature_3m",
+    "temperature_4m",
+    "temperature_5m"
+  ]
+}

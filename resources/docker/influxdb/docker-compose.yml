@@ -1,0 +1,17 @@
+version: "3.8"
+services:
+  influxdb-server:
+    image: influxdb:2.7
+    container_name: influxdb-server
+    ports:
+      - "8086:8086"
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=permafrost
+      - DOCKER_INFLUXDB_INIT_PASSWORD=permafrost
+      - DOCKER_INFLUXDB_INIT_ORG=permafrost
+      - DOCKER_INFLUXDB_INIT_BUCKET=permafrost_data
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+volumes:
+  influxdb_data:

@@ -1,0 +1,83 @@
+<mxfile host="Electron" modified="2025-10-24T00:00:00.000Z" agent="draw.io/21.2.1" version="21.2.1" type="device">
+  <diagram id="Permafrost_DT_Final" name="Permafrost DT - Physical Digital Interaction">
+    <mxGraphModel dx="1600" dy="900" grid="1" gridSize="10" guides="1" connect="1" arrows="1" fold="1" page="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <mxCell id="title" value="Permafrost Digital Twin — Interaction with Physical Twin" style="text;html=1;fontSize=18;fontStyle=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="-420" y="-220" width="900" height="40" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="physTwin" value="Permafrost Site (Physical Twin)" style="shape=folder;fontStyle=1;tabWidth=40;tabHeight=14;tabPosition=left;verticalAlign=top;align=left;html=1;" vertex="1" parent="1">
+          <mxGeometry x="-400" y="-90" width="420" height="300" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="digTwin" value="Permafrost Digital Twin" style="shape=folder;fontStyle=1;tabWidth=40;tabHeight=14;tabPosition=left;verticalAlign=top;align=left;html=1;" vertex="1" parent="1">
+          <mxGeometry x="60" y="-90" width="620" height="450" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="soilSensors" value="&lt;b&gt;Soil Sensors&lt;/b&gt;&lt;br&gt;Measure T_0m–T_5m&lt;br&gt;Publish {time_days, T_0m–T_5m}" style="shape=component;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="-370" y="-40" width="160" height="90" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="edgeGateway" value="&lt;b&gt;Edge Gateway&lt;/b&gt;&lt;br&gt;Publishes to RabbitMQ&lt;br&gt;Topic: permafrost.sensors.temperature" style="shape=component;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="-180" y="20" width="160" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="obsio" value="&lt;b&gt;obs_io&lt;/b&gt;&lt;br&gt;Ingests {time_days, T_0m–T_5m}&lt;br&gt;Stores (time_days, depth, T)" style="shape=component;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="90" y="-30" width="160" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="boundary" value="&lt;b&gt;boundary_forcing&lt;/b&gt;&lt;br&gt;Extracts Tₛ(t)=T_0m&lt;br&gt;Provides boundary input" style="shape=component;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="270" y="-30" width="160" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="sim" value="&lt;b&gt;fdm_simulator&lt;/b&gt;&lt;br&gt;Solves 1D heat PDE" style="shape=component;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="450" y="-30" width="160" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="pinnInv" value="&lt;b&gt;pinn_inversion&lt;/b&gt;&lt;br&gt;Estimates thermal parameters" style="shape=component;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="270" y="70" width="160" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="viz" value="&lt;b&gt;viz_gateway&lt;/b&gt;&lt;br&gt;Visualization dashboards" style="shape=component;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="450" y="70" width="160" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="rabbit" value="«MessageExchange»&lt;br&gt;&lt;b&gt;RabbitMQ&lt;/b&gt;&lt;br&gt;Topic: permafrost.sensors.temperature" style="whiteSpace=wrap;html=1;rounded=1;fillColor=#fff7ed;strokeColor=#9a3412;" vertex="1" parent="1">
+          <mxGeometry x="250" y="180" width="180" height="40" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="influx" value="«TimeSeriesDB»&lt;br&gt;&lt;b&gt;InfluxDB&lt;/b&gt;&lt;br&gt;Schema: {time_days, depth, temperature}" style="whiteSpace=wrap;html=1;rounded=1;fillColor=#f0f9ff;strokeColor=#0369a1;" vertex="1" parent="1">
+          <mxGeometry x="250" y="240" width="180" height="40" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="flow1" value="Sensor data {time_days, T_0m–T_5m}" style="endArrow=classic;dashed=1;strokeColor=#0284c7;" edge="1" parent="1" source="edgeGateway" target="obsio">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="flow2" value="Boundary Ts(t)=T_0m" style="endArrow=classic;dashed=1;strokeColor=#0284c7;" edge="1" parent="1" source="edgeGateway" target="boundary">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="flow3" value="Predicted control / alert" style="endArrow=classic;dashed=1;strokeColor=#16a34a;" edge="1" parent="1" source="pinnInv" target="edgeGateway">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="store" value="" style="endArrow=none;strokeColor=#0284c7;" edge="1" parent="1" source="obsio" target="influx">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="read" value="" style="endArrow=none;strokeColor=#0284c7;" edge="1" parent="1" source="viz" target="influx">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="desc" value="&lt;b&gt;Overview:&lt;/b&gt;&lt;br&gt;The Physical Twin measures temperature at depths 0–5 m and sends structured readings {time_days, T₀m–T₅m} via RabbitMQ. The Digital Twin ingests these through obs_io, stores them in InfluxDB, and extracts boundary conditions for simulation and learning. FDM and PINN modules reconstruct and forecast soil thermal dynamics, while inversion refines parameters. Outputs and insights are visualized or fed back to the physical system." style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=top;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="-400" y="260" width="950" height="100" as="geometry"/>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

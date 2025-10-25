@@ -1,0 +1,86 @@
+<mxfile host="Electron" modified="2025-10-24T00:00:00.000Z" agent="draw.io/21.2.1" version="21.2.1" type="device">
+  <diagram id="Permafrost_HighLevel" name="Permafrost DT - System Architecture">
+    <mxGraphModel dx="1600" dy="900" grid="1" gridSize="10" guides="1" connect="1" arrows="1" fold="1" page="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <!-- Title -->
+        <mxCell id="title" value="Permafrost Digital Twin — High-Level System Architecture" style="text;html=1;fontSize=18;fontStyle=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="-420" y="-220" width="900" height="40" as="geometry"/>
+        </mxCell>
+
+        <!-- Physical Twin -->
+        <mxCell id="physTwin" value="&lt;b&gt;Physical Twin&lt;/b&gt;&lt;br&gt;Permafrost Site&lt;br&gt;&lt;br&gt;Publishes {time_days, temperature_0m–temperature_5m} to RabbitMQ topic 'permafrost.sensors.temperature'" style="shape=folder;fontStyle=1;tabWidth=40;tabHeight=14;tabPosition=left;verticalAlign=top;align=left;html=1;" vertex="1" parent="1">
+          <mxGeometry x="-440" y="-60" width="340" height="240" as="geometry"/>
+        </mxCell>
+
+        <!-- RabbitMQ -->
+        <mxCell id="rabbit" value="«MessageExchange»&lt;br&gt;&lt;b&gt;RabbitMQ&lt;/b&gt;&lt;br&gt;Topic: permafrost.sensors.temperature" style="whiteSpace=wrap;html=1;rounded=1;fillColor=#fff7ed;strokeColor=#9a3412;" vertex="1" parent="1">
+          <mxGeometry x="-60" y="20" width="200" height="70" as="geometry"/>
+        </mxCell>
+
+        <!-- InfluxDB -->
+        <mxCell id="influx" value="«TimeSeriesDB»&lt;br&gt;&lt;b&gt;InfluxDB&lt;/b&gt;&lt;br&gt;Schema: {time_days, depth, temperature}" style="whiteSpace=wrap;html=1;rounded=1;fillColor=#f0f9ff;strokeColor=#0369a1;" vertex="1" parent="1">
+          <mxGeometry x="-60" y="130" width="200" height="70" as="geometry"/>
+        </mxCell>
+
+        <!-- Digital Twin -->
+        <mxCell id="digTwin" value="&lt;b&gt;Digital Twin&lt;/b&gt;&lt;br&gt;High-Level Services" style="shape=folder;fontStyle=1;tabWidth=40;tabHeight=14;tabPosition=left;verticalAlign=top;align=left;html=1;" vertex="1" parent="1">
+          <mxGeometry x="220" y="-100" width="520" height="400" as="geometry"/>
+        </mxCell>
+
+        <!-- Service Categories -->
+        <mxCell id="dataIngest" value="&lt;b&gt;Data Ingestion&lt;/b&gt;&lt;br&gt;• obs_io&lt;br&gt;• boundary_forcing" style="shape=component;whiteSpace=wrap;html=1;fillColor=#e0f2fe;" vertex="1" parent="1">
+          <mxGeometry x="260" y="-30" width="160" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="simulation" value="&lt;b&gt;Simulation&lt;/b&gt;&lt;br&gt;• fdm_simulator&lt;br&gt;• pinn_forward" style="shape=component;whiteSpace=wrap;html=1;fillColor=#fef9c3;" vertex="1" parent="1">
+          <mxGeometry x="450" y="-30" width="160" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="learning" value="&lt;b&gt;Learning &amp;amp; Calibration&lt;/b&gt;&lt;br&gt;• pinn_inversion&lt;br&gt;• MAPE-K Manager" style="shape=component;whiteSpace=wrap;html=1;fillColor=#dcfce7;" vertex="1" parent="1">
+          <mxGeometry x="260" y="80" width="160" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="storage" value="&lt;b&gt;Storage &amp;amp; Registry&lt;/b&gt;&lt;br&gt;• InfluxDB&lt;br&gt;• Model Registry" style="shape=component;whiteSpace=wrap;html=1;fillColor=#fae8ff;" vertex="1" parent="1">
+          <mxGeometry x="450" y="80" width="160" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="viz" value="&lt;b&gt;Visualization&lt;/b&gt;&lt;br&gt;• viz_gateway&lt;br&gt;• Dashboards" style="shape=component;whiteSpace=wrap;html=1;fillColor=#f1f5f9;" vertex="1" parent="1">
+          <mxGeometry x="350" y="190" width="160" height="70" as="geometry"/>
+        </mxCell>
+
+        <!-- Connections -->
+        <mxCell id="edge1" value="Sensor data (T_0m–T_5m)" style="endArrow=classic;strokeColor=#0284c7;" edge="1" parent="1" source="physTwin" target="rabbit">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="edge2" value="Data stream via topic" style="endArrow=classic;strokeColor=#0284c7;" edge="1" parent="1" source="rabbit" target="dataIngest">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="edge3" value="Ingested data persisted" style="endArrow=classic;strokeColor=#0369a1;" edge="1" parent="1" source="dataIngest" target="influx">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="edge4" value="Boundary series Tₛ(t)" style="endArrow=classic;strokeColor=#4b5563;dashed=1;" edge="1" parent="1" source="dataIngest" target="simulation">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="edge5" value="Predictions &amp;amp; parameters" style="endArrow=classic;strokeColor=#4b5563;" edge="1" parent="1" source="simulation" target="learning">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="edge6" value="Calibrated outputs" style="endArrow=classic;strokeColor=#4b5563;" edge="1" parent="1" source="learning" target="storage">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="edge7" value="Query for visualization" style="endArrow=classic;strokeColor=#4b5563;" edge="1" parent="1" source="storage" target="viz">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
