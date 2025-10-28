@@ -13,7 +13,7 @@ from software.services.common.messaging import RabbitMQClient
 logger = setup_logger("test_pinn_inversion")
 
 def main():
-    logger.info("Starting test for PINN inversion service...")
+    logger.info(">>> Starting test for PINN inversion service...")
     mq = RabbitMQClient(
         queue="permafrost.sim.pinn.forward.output",
         schema_path="software/services/common/schemas/pinn_forward_output_message.json"

@@ -29,7 +29,7 @@ def test_obs_io_pipeline():
     4. Queries InfluxDB to verify data ingestion.
     """
     # Ensure services are running
-    print("\nℹ️  Checking if services are running...")
+    print("\n 1 - Checking if services are running...")
     try:
         import requests
         # Check RabbitMQ
@@ -44,16 +44,16 @@ def test_obs_io_pipeline():
         if r.status_code != 200:
             raise Exception(f"InfluxDB returned status {r.status_code}")
             
-        print("✅ Services are running")
+        print("Services are running!")
     except Exception as e:
-        print(f"❌ Error checking services: {str(e)}")
-        print("💡 Try running these commands first:")
+        print(f"Error checking services: {str(e)}")
+        print("-->Try running these commands first:")
         print("   python software/starup/docker_services/start_rabbitmq.py")
         print("   python software/starup/docker_services/start_influxdb.py")
         raise
 
     # Start service in background
-    print("\nℹ️  Starting observation ingestion service...")
+    print("\n 2 - Starting observation ingestion service...")
     thread = Thread(target=run_service, daemon=True)
     thread.start()
     time.sleep(3)

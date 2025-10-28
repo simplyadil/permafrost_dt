@@ -13,23 +13,23 @@ def run_service():
 
 
 def test_pinn_forward_pipeline():
-    print("\nℹ️  Checking if services are running...")
+    print("\n 1 - Checking if services are running...")
     time.sleep(1)
-    print("✅ Services are running\n")
+    print("Services are running!\n")
 
     influx = InfluxHelper()
 
     # Seed FDM temperature data
-    print("ℹ️  Seeding FDM data in InfluxDB...")
+    print(" 2 - Seeding FDM data in InfluxDB...")
     t_day = 0.200
     depths = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]
     temps = [-11.0, -9.5, -8.0, -6.5, -5.0, -3.5]
     for d, T in zip(depths, temps):
         influx.write_model_temperature("fdm_temperature", t_day, d, T, extra_tags={"model": "fdm"})
-    print("✅ FDM data seeded.\n")
+    print("FDM data seeded!\n")
 
     # Start the service
-    print("ℹ️  Starting PINN forward service...")
+    print(" 3 - Starting PINN forward service...")
     t = threading.Thread(target=run_service, daemon=True)
     t.start()
     time.sleep(2)
@@ -45,17 +45,17 @@ def test_pinn_forward_pipeline():
         "status": "ready"
     }
     mq.publish(msg)
-    print("✅ Published FDM update message.\n")
+    print("Published FDM update message!\n")
 
     # Wait for retraining and writeback
-    print("⌛ Waiting for training (approx. 20–40s)...")
+    print(">>> Waiting for training (approx. 20–40s)...")
     time.sleep(40)
 
     # Query predictions
     df = influx.query_model_temperature(measurement="pinn_temperature", limit=5000)
     print(df.head())
     assert df is not None and not df.empty, "No PINN predictions found."
-    print("\n✅ pinn_forward_service test passed successfully!")
+    print("\npinn_forward_service test passed successfully!")
 
 
 if __name__ == "__main__":

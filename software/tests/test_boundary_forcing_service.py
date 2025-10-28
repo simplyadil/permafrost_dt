@@ -15,12 +15,12 @@ def run_service():
 
 
 def test_boundary_forcing_pipeline():
-    print("\nℹ️  Checking if services are running...")
+    print("\n 1 - Checking if services are running...")
     time.sleep(1)
-    print("✅ Services are running\n")
+    print("Services are running!\n")
 
     # --- SETUP PHASE ---
-    print("ℹ️  Writing test data to InfluxDB...")
+    print(" 2 - Writing test data to InfluxDB...")
     influx = InfluxHelper()
 
     # Clear a time window and write mock observations
@@ -31,16 +31,16 @@ def test_boundary_forcing_pipeline():
     for d, T in zip(depths, temperatures):
         influx.write_temperature(time_days, d, T)
 
-    print("✅ Test data written.\n")
+    print("Test data written!\n")
 
     # --- RUN SERVICE IN BACKGROUND THREAD ---
-    print("ℹ️  Starting boundary_forcing_service...")
+    print(" 3 -  Starting boundary_forcing_service...")
     service_thread = threading.Thread(target=run_service, daemon=True)
     service_thread.start()
     time.sleep(5)  # let it process a few polling cycles
 
     # --- VERIFY MESSAGE PUBLICATION ---
-    print("ℹ️  Listening for published boundary forcing message...")
+    print(" 4 - Listening for published boundary forcing message...")
     mq = RabbitMQClient(
         queue="permafrost.boundary.forcing",
         schema_path="software/services/common/schemas/boundary_forcing_message.json"
@@ -52,9 +52,9 @@ def test_boundary_forcing_pipeline():
         nonlocal received
         try:
             received = msg
-            print(f"✅ Received message from boundary_forcing_service: {msg}")
+            print(f"Received message from boundary_forcing_service: {msg}")
         except Exception as e:
-            print(f"❌ Failed to process message: {e}")
+            print(f"Failed to process message: {e}")
 
     # Start consumer in background so the test thread can continue
     consumer_thread = threading.Thread(target=lambda: mq.consume(callback=on_message, auto_ack=True), daemon=True)
@@ -63,7 +63,7 @@ def test_boundary_forcing_pipeline():
 
     assert "Ts" in received, "No Ts field received from boundary_forcing_service"
     assert "time_days" in received, "No time_days field received"
-    print("\n✅ boundary_forcing_service test passed successfully!")
+    print("\nboundary_forcing_service test passed successfully!")
 
 
 if __name__ == "__main__":

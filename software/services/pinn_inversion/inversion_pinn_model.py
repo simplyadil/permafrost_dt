@@ -181,5 +181,5 @@ class InversionFreezingSoilPINN:
                 self.log(f"[{epoch:05d}] Loss={total_loss.item():.3e}, Params={self.get_params()}")
             self.loss_history.append(total_loss.item())
 
-        self.log("✅ Inversion complete.")
+        self.log("Inversion complete!")
         return self.get_params()

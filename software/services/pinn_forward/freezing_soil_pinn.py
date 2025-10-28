@@ -186,7 +186,7 @@ class FreezingSoilPINN:
                          f"BCL={bcL_loss.item():.3e} IC={ic_loss.item():.3e}")
             self.loss_history.append(total_loss.item())
 
-        self.log("✅ Training completed.")
+        self.log("Training completed!")
 
     # -------------------------
     # Prediction

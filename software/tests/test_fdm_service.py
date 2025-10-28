@@ -20,23 +20,23 @@ def run_service():
 
 
 def test_fdm_pipeline():
-    print("\nℹ️  Checking if services are running...")
+    print("\n 1 - Checking if services are running...")
     time.sleep(1)
-    print("✅ Services are running\n")
+    print("Services are running!\n")
 
     influx = InfluxHelper()
 
     # --- Seed an "observed" profile the FDM can start from ---
-    print("ℹ️  Seeding initial observed temperatures (soil_temperature)...")
+    print(" 2 - Seeding initial observed temperatures (soil_temperature)...")
     t0 = 0.100
     depths = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]
     temps  = [-11.0, -9.2, -7.8, -6.1, -4.3, -2.5]
     for d, T in zip(depths, temps):
         influx.write_temperature(time_days=t0, depth=d, temperature=T)
-    print("✅ Seeded.\n")
+    print("Seeded!\n")
 
     # --- Start the FDM service in background thread ---
-    print("ℹ️  Starting FDM service...")
+    print(" 3 - Starting FDM service...")
     t = threading.Thread(target=run_service, daemon=True)
     t.start()
     time.sleep(2)  # give the consumer time to connect
@@ -53,13 +53,13 @@ def test_fdm_pipeline():
         "Ts": -12.5
     }
     mq_boundary.publish(ts_msg)
-    print("✅ Published Ts message.\n")
+    print("Published Ts message!\n")
 
     # --- Allow the FDM service to process and write results ---
     time.sleep(4)
 
     # --- Verify Influx has fdm_temperature written ---
-    print("ℹ️  Querying fdm_temperature from Influx...")
+    print(" 4 - Querying fdm_temperature from Influx...")
     df = influx.query_model_temperature(measurement="fdm_temperature", limit=200)
     print(df.head() if hasattr(df, "head") else df)
 
@@ -72,7 +72,7 @@ def test_fdm_pipeline():
     latest_surface_T = float(df0.iloc[-1]["temperature"])
     assert abs(latest_surface_T - ts_msg["Ts"]) < 1e-6, "Surface T not enforced to Ts."
 
-    print("\n✅ fdm_service test passed successfully!")
+    print("\nfdm_service test passed successfully!")
 
 
 if __name__ == "__main__":
