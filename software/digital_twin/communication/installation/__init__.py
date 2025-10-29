@@ -1,0 +1,2 @@
+"""Installation assets for RabbitMQ."""
+

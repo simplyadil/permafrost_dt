@@ -10,12 +10,14 @@ In this README you'll find the repository layout, dependencies, environment vari
 
 - Purpose: run a pipeline that generates synthetic/observed temperature data, simulates via an FDM solver, runs PINN forward/inversion, stores results in InfluxDB, and publishes visualization-ready messages.
 - Main components:
-  - services/obs_io — observation ingestion and writing to InfluxDB
-  - services/fdm_simulator — FDM-based simulator that writes results to InfluxDB
-  - services/pinn_forward — PINN forward model (PyTorch)
-  - services/pinn_inversion — PINN inversion model (PyTorch)
-  - services/viz_gateway — aggregates results and publishes visualization messages
-  - services/common — shared utilities (messaging, logger, influx helper, schemas)
+  - digital_twin/monitoring/observation_ingestion — observation ingestion and writing to InfluxDB
+  - digital_twin/monitoring/boundary_forcing — derives boundary conditions for the simulator
+  - digital_twin/simulator/fdm — FDM-based simulator that writes results to InfluxDB
+  - digital_twin/simulator/pinn_forward — PINN forward model (PyTorch)
+  - digital_twin/simulator/pinn_inversion — PINN inversion model (PyTorch)
+  - digital_twin/visualization/viz_gateway — aggregates results and publishes visualization messages
+  - digital_twin/communication — shared messaging utilities and schemas
+  - digital_twin/data_access — InfluxDB helpers and Docker assets
 
 ## Repo layout (important files)
 
@@ -25,15 +27,14 @@ README.md
 data/
 docs/                 # diagrams and architecture drawings (.drawio)
 software/
-  services/
-    common/           # messaging, logger, influx helpers, schemas
-    obs_io/
-    fdm_simulator/
-    pinn_forward/
-    pinn_inversion/
-    viz_gateway/
-  tests/               # lightweight functional tests you can run directly
-resources/docker/      # docker-compose manifests for InfluxDB and RabbitMQ
+  digital_twin/
+    communication/     # messaging, logger, schemas, rabbitmq assets
+    data_access/       # influx helper + docker assets
+    monitoring/        # ingestion + boundary forcing servers
+    simulator/         # FDM + PINN servers
+    visualization/     # viz gateway server
+  startup/             # orchestration scripts
+integration_tests/     # lightweight behavioural checks
 logs/
 ```
 
@@ -78,38 +79,41 @@ Set these in your shell or an env file before running services that connect to I
 
 ## Starting local infrastructure (Docker)
 
-Docker Compose manifests are available under `resources/docker/` for InfluxDB and RabbitMQ. Each service has its own docker-compose.yml.
+Docker Compose manifests are available under the digital twin package:
+
+- InfluxDB: `software/digital_twin/data_access/influxdbserver/docker-compose.yml`
+- RabbitMQ: `software/digital_twin/communication/installation/rabbitmq/docker-compose.yml`
 
 To start InfluxDB:
 
 ```bash
-cd resources/docker/influxdb
+cd software/digital_twin/data_access/influxdbserver
 docker-compose up -d
-# Wait for health endpoint (script in software/starup/docker_services can help)
+# Wait for health endpoint (script in software/startup/docker_services can help)
 ```
 
 To start RabbitMQ:
 
 ```bash
-cd resources/docker/rabbitmq
+cd software/digital_twin/communication/installation/rabbitmq
 docker-compose up -d
 ```
 
-There are small helper scripts in `software/starup/docker_services/` such as `start_influxdb.py` and `start_rabbitmq.py` which perform a compose up and poll the health endpoints. You can run these from the repo root (with a Python venv active).
+There are helper scripts in `software/startup/docker_services/` such as `start_influxdb.py` and `start_rabbitmq.py` which perform a compose up and poll the health endpoints. You can run these from the repo root (with a Python venv active).
 
 ## Running individual services
 
 Many services are written as simple Python modules you can run directly. Example: run the viz gateway (ensure env vars are set):
 
 ```bash
-python software/services/viz_gateway/viz_gateway_service.py
+python software/digital_twin/visualization/viz_gateway/viz_gateway_server.py
 ```
 
 If you run scripts directly from the `software` tree, the tests and some scripts include a small `sys.path` adjustment to allow running modules directly for development.
 
 ## Tests
 
-There are small integration-style tests under `software/tests/` that exercise the end-to-end pipeline with local InfluxDB and RabbitMQ. They are not isolated unit tests and assume the local infra is up.
+Integration-style smoke tests live in the top-level `integration_tests/` directory.
 
 Run tests (simple invocation):
 
@@ -117,23 +121,23 @@ Run tests (simple invocation):
 pytest -q
 ```
 
-Or you can run individual test scripts directly (they include a `sys.path` fix for running standalone):
+Or you can run individual test scripts directly:
 
 ```bash
-python software/tests/test_viz_gateway_service.py
-python software/tests/test_obs_io_service.py
+python integration_tests/test_viz_gateway_server.py
+python integration_tests/test_observation_ingestion_server.py
 ```
 
 ## JSON schemas and messaging
 
-- Message schemas live in `software/services/common/schemas/`.
-- Messaging uses RabbitMQ via `pika`. `software/services/common/messaging.py` exposes `RabbitMQClient` with convenience helpers (publish, consume). Messages are validated against JSON Schema before publishing.
+- Message schemas live in `software/digital_twin/communication/schemas/`.
+- Messaging uses RabbitMQ via `pika`. `software/digital_twin/communication/messaging.py` exposes `RabbitMQClient` with convenience helpers (publish, consume). Messages are validated against JSON Schema before publishing.
 
 ## Development notes and tips
 
 - Pin PyTorch carefully for reproducible installs; use the PyTorch website to pick the right wheel for CUDA or CPU.
 - The codebase uses pandas and numpy extensively — ensure `pandas` and `numpy` are installed in the venv.
-- If you hit import errors like `ModuleNotFoundError: No module named 'services'`, make sure you run scripts from the repository root or use `python -m software.services.viz_gateway.viz_gateway_service` style imports; tests in `software/tests` already add the repo root to `sys.path` when needed.
+- If you hit import errors like `ModuleNotFoundError: No module named 'digital_twin'`, make sure you run scripts from the repository root or use `python -m software.digital_twin.visualization.viz_gateway.viz_gateway_server` style imports.
 
 ## Troubleshooting
 

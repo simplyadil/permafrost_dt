@@ -1,0 +1,2 @@
+python -m pytest -q --maxfail=1 --disable-warnings -v
+ERROR: No module named pytest (python standard library in environment lacks pytest)
