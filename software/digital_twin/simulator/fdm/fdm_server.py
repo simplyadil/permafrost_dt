@@ -44,6 +44,10 @@ BOUNDARY_QUEUE = "permafrost.record.boundary.state"
 FDM_QUEUE = "permafrost.record.fdm.state"
 BOUNDARY_SCHEMA = Path(__file__).resolve().parents[2] / "communication" / "schemas" / "boundary_forcing_message.json"
 FDM_SCHEMA = Path(__file__).resolve().parents[2] / "communication" / "schemas" / "fdm_output_message.json"
+SENSOR_QUEUE = "permafrost.record.sensors.state"
+SENSOR_SCHEMA = Path(__file__).resolve().parents[2] / "communication" / "schemas" / "sensor_message.json"
+DEFAULT_SENSOR_DEPTHS: tuple[int, ...] = (0, 1, 2, 3, 4, 5)
+ALLOWED_SENSOR_DEPTHS: set[int] = set(DEFAULT_SENSOR_DEPTHS)
 
 
 class FDMServer:
@@ -58,6 +62,8 @@ class FDMServer:
         influx_config: InfluxConfig | None = None,
         boundary_config: RabbitMQConfig | None = None,
         outbound_config: RabbitMQConfig | None = None,
+        sensor_config: RabbitMQConfig | None = None,
+        sensor_depths: tuple[int, ...] | None = None,
     ) -> None:
         self.logger = setup_logger("FDMServer")
         self.influx_config = influx_config or InfluxConfig()
@@ -78,14 +84,40 @@ class FDMServer:
                 username=outbound_config.username,
                 password=outbound_config.password,
             )
+        if sensor_config is not None and sensor_config.schema_path is None:
+            sensor_config = RabbitMQConfig(
+                host=sensor_config.host,
+                queue=sensor_config.queue,
+                schema_path=SENSOR_SCHEMA,
+                username=sensor_config.username,
+                password=sensor_config.password,
+            )
         boundary_base = boundary_config or RabbitMQConfig(schema_path=BOUNDARY_SCHEMA)
         outbound_base = outbound_config or RabbitMQConfig(schema_path=FDM_SCHEMA)
+        sensor_base = sensor_config
         self.boundary_config = boundary_base.with_queue(BOUNDARY_QUEUE)
         self.outbound_config = outbound_base.with_queue(FDM_QUEUE)
+        self.sensor_config = sensor_base.with_queue(SENSOR_QUEUE) if sensor_base is not None else None
 
         self.mq_in: Optional[RabbitMQClient] = None
         self.mq_out: Optional[RabbitMQClient] = None
+        self.mq_sensor: Optional[RabbitMQClient] = None
         self.influx: Optional[InfluxHelper] = None
+        raw_depths = sensor_depths or DEFAULT_SENSOR_DEPTHS
+        cleaned_depths: list[int] = []
+        for depth in raw_depths:
+            depth_float = float(depth)
+            depth_int = int(round(depth_float))
+            if not math.isclose(depth_float, depth_int, abs_tol=1e-6):
+                raise ValueError(
+                    f"Sensor depth {depth} must be specified in whole metres (0-5)."
+                )
+            if depth_int not in ALLOWED_SENSOR_DEPTHS:
+                raise ValueError(
+                    f"Unsupported sensor depth {depth}. Allowed discrete depths: {sorted(ALLOWED_SENSOR_DEPTHS)}"
+                )
+            cleaned_depths.append(depth_int)
+        self.sensor_depths = tuple(cleaned_depths)
 
         # Physics + Grid
         self.phys = PhysicsParams()
@@ -263,6 +295,41 @@ class FDMServer:
             )
         self.logger.info(f"Advanced FDM: Ts={self.T[0]:.2f}°C, wrote {len(self.T)} depths at t={t_day:g} d.")
 
+    def _publish_sensor_observation(self, t_day: float) -> None:
+        """
+        Emit a synthetic sensor message derived from the current temperature profile.
+        """
+        if self.mq_sensor is None or self.T is None:
+            return
+
+        min_depth = float(self.x[0])
+        max_depth = float(self.x[-1])
+        if any(depth < min_depth or depth > max_depth for depth in self.sensor_depths):
+            self.logger.warning(
+                "Skipping synthetic sensor publish. Depths %s exceed grid bounds %.2f-%.2f m.",
+                self.sensor_depths,
+                min_depth,
+                max_depth,
+            )
+            return
+
+        probe_depths = np.array(self.sensor_depths, dtype=float)
+        temperatures = np.interp(probe_depths, self.x, self.T)
+        msg = {
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "time_days": float(t_day),
+            # Flag downstream subscribers that a fresh profile is ready; tests expect this.
+            "status": "ready",
+        }
+        for depth_int, temp in zip(self.sensor_depths, temperatures):
+            msg[f"temperature_{depth_int}m"] = float(temp)
+
+        try:
+            self.mq_sensor.publish(msg)
+            self.logger.info("Published synthetic sensor message at t=%s d.", t_day)
+        except Exception as exc:  # pragma: no cover - depends on broker availability
+            self.logger.error("Failed to publish synthetic sensor message: %s", exc)
+
     def _notify_ready(self, t_day: float):
         msg = {
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -294,6 +361,7 @@ class FDMServer:
             self.theta_prev = self.unfrozen_water_content(self.T)
             self.current_time_days = t_new
             self._write_profile(t_new)
+            self._publish_sensor_observation(t_new)
             self._notify_ready(t_new)
             return
 
@@ -301,6 +369,7 @@ class FDMServer:
         Ts_prev = float(self.T[0]) if self.T is not None else Ts_new
         self._advance(self.current_time_days, t_new, Ts_prev, Ts_new)
         self._write_profile(t_new)
+        self._publish_sensor_observation(t_new)
         self._notify_ready(t_new)
 
     # ---------------------------
@@ -324,6 +393,8 @@ class FDMServer:
             self.mq_in = RabbitMQClient(self.boundary_config)
         if self.mq_out is None:
             self.mq_out = RabbitMQClient(self.outbound_config)
+        if self.sensor_config is not None and self.mq_sensor is None:
+            self.mq_sensor = RabbitMQClient(self.sensor_config)
         self._initialize_state()
         self._running = True
         self.logger.info("FDMServer setup complete.")
@@ -356,6 +427,8 @@ class FDMServer:
             self.mq_in.disconnect()
         if self.mq_out is not None:
             self.mq_out.disconnect()
+        if self.mq_sensor is not None:
+            self.mq_sensor.disconnect()
         if self.influx is not None:
             self.influx.close()
         self.logger.info("FDMServer shutdown complete.")

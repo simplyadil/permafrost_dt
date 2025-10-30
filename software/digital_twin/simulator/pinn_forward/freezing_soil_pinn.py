@@ -1,10 +1,14 @@
 # software/services/pinn_forward/freezing_soil_pinn.py
+import json
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 import random
 import os
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Sequence
 
 
 # -------------------------
@@ -62,9 +66,10 @@ class FreezingSoilPINN:
         self.scheduler = optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=1000)
 
         # Logging buffers
-        self.loss_history = []
-        self.components = {"pde": [], "bc0": [], "bcL": [], "ic": []}
+        self.loss_history: List[float] = []
+        self.components: Dict[str, List[float]] = {"pde": [], "bc0": [], "bcL": [], "ic": []}
         self.T_max = None
+        self._last_summary: Dict[str, object] | None = None
 
     # -------------------------
     # Physical Subroutines
@@ -156,6 +161,11 @@ class FreezingSoilPINN:
         self.T_max = torch.max(self._boundary_temp(t_test)).item()
         self.log(f"T_max scaling factor = {self.T_max:.2f}")
 
+        # Clear previous history so each run is self-contained.
+        self.loss_history.clear()
+        for key in self.components:
+            self.components[key].clear()
+
         # Sample points
         x = torch.rand(n_samples, 1, device=self.device) * (x_domain[1] - x_domain[0]) + x_domain[0]
         t = torch.rand(n_samples, 1, device=self.device) * (t_domain[1] - t_domain[0]) + t_domain[0]
@@ -184,9 +194,12 @@ class FreezingSoilPINN:
                 self.log(f"[{epoch:05d}] Loss={total_loss.item():.3e} "
                          f"PDE={pde_loss.item():.3e} BC0={bc0_loss.item():.3e} "
                          f"BCL={bcL_loss.item():.3e} IC={ic_loss.item():.3e}")
-            self.loss_history.append(total_loss.item())
+            self._record_epoch_metrics(total_loss, pde_loss, bc0_loss, bcL_loss, ic_loss)
 
         self.log("Training completed!")
+        summary = self.build_training_summary(status="trained", epochs=epochs)
+        self._last_summary = summary
+        return summary
 
     # -------------------------
     # Prediction
@@ -201,3 +214,66 @@ class FreezingSoilPINN:
         path = os.path.join(model_dir, "freezing_soil_pinn.pt")
         torch.save(self.model.state_dict(), path)
         self.log(f"Model saved to {path}")
+
+    def load(self, model_path: str) -> None:
+        """Load pretrained weights from disk."""
+        state_dict = torch.load(model_path, map_location=self.device)
+        self.model.load_state_dict(state_dict)
+        self.model.eval()
+        self.log(f"Model weights loaded from {model_path}")
+
+    # -------------------------
+    # Training history helpers
+    # -------------------------
+    def _record_epoch_metrics(self, total_loss, pde_loss, bc0_loss, bcL_loss, ic_loss) -> None:
+        """Persist scalar losses for downstream visualization."""
+        self.loss_history.append(float(total_loss.item()))
+        self.components["pde"].append(float(pde_loss.item()))
+        self.components["bc0"].append(float(bc0_loss.item()))
+        self.components["bcL"].append(float(bcL_loss.item()))
+        self.components["ic"].append(float(ic_loss.item()))
+
+    @staticmethod
+    def _downsample(seq: Sequence[float], max_points: int = 1000) -> List[float]:
+        """Downsample long sequences for compact JSON payloads."""
+        if len(seq) <= max_points:
+            return list(seq)
+        if max_points <= 1:
+            return [float(seq[-1])]
+        step = max((len(seq) - 1) / (max_points - 1), 1.0)
+        indices = [min(int(round(i * step)), len(seq) - 1) for i in range(max_points)]
+        return [float(seq[i]) for i in dict.fromkeys(indices)]
+
+    def build_training_summary(self, *, status: str, epochs: int, max_points: int = 1000) -> Dict[str, object]:
+        """Create a serialisable snapshot of the latest training/inference run."""
+        summary = {
+            "status": status,
+            "epochs": int(epochs),
+            "timestamp": datetime.utcnow().isoformat(),
+            "loss": {
+                "total": self._downsample(self.loss_history, max_points=max_points),
+                "pde": self._downsample(self.components["pde"], max_points=max_points),
+                "bc0": self._downsample(self.components["bc0"], max_points=max_points),
+                "bcL": self._downsample(self.components["bcL"], max_points=max_points),
+                "ic": self._downsample(self.components["ic"], max_points=max_points),
+            },
+            "parameters": {k: float(v.detach().cpu().item()) for k, v in self.params.items()},
+        }
+        return summary
+
+    def save_training_summary(
+        self,
+        target_path: str | Path,
+        *,
+        status: str,
+        epochs: int,
+        summary: Dict[str, object] | None = None,
+    ) -> Dict[str, object]:
+        """Persist the latest training summary to disk and return it."""
+        target = Path(target_path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if summary is None:
+            summary = self.build_training_summary(status=status, epochs=epochs)
+        target.write_text(json.dumps(summary, indent=2))
+        self._last_summary = summary
+        return summary

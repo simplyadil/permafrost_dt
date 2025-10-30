@@ -34,7 +34,7 @@ def test_on_message_spawns_inversion_worker() -> None:
     original_thread = pinn_inversion_module.Thread
     pinn_inversion_module.Thread = _ImmediateThread  # type: ignore[assignment]
     try:
-        server._on_message({"status": "trained"})
+        server._on_message({"status": "ready"})
     finally:
         pinn_inversion_module.Thread = original_thread  # type: ignore[assignment]
 

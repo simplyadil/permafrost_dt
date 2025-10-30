@@ -22,6 +22,23 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "username": "permafrost",
         "password": "permafrost",
     },
+    "synthetic_observations": {
+        "enabled": True,
+        "depths_m": [0, 1, 2, 3, 4, 5],
+    },
+    "synthetic_boundary": {
+        "enabled": True,
+        "start_day": 0.0,
+        "step_days": 1.0,
+    },
+    "pinn_forward": {
+        "enable_training": False,
+        "model_path": "software/models/pinn_forward/freezing_soil_pinn.pt",
+    },
+    "pinn_inversion": {
+        "enable_training": False,
+        "model_path": "software/models/pinn_inversion/inversion_pinn.pt",
+    },
 }
 
 

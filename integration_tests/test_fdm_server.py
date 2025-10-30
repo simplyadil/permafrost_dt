@@ -63,7 +63,8 @@ def _make_server() -> tuple[FDMServer, _InfluxStub, _PublisherStub]:
     server = FDMServer.__new__(FDMServer)  # type: ignore[call-arg]
     server.logger = logging.getLogger("FDMServerTest")
     server.influx = influx
-    server.mq_out = publisher
+    server.mq_out = _PublisherStub()  # Separate publisher for control messages
+    server.mq_sensor = publisher  # Use provided publisher for sensor messages
     server.phys = fdm_module.PhysicsParams()
     server.grid = fdm_module.GridParams()
     server.x = np.linspace(0.0, server.grid.Lx, server.grid.Nx)
@@ -74,6 +75,7 @@ def _make_server() -> tuple[FDMServer, _InfluxStub, _PublisherStub]:
     server.bottom_bc_temp = 1.0
     server.mq_in = None  # type: ignore[attr-defined]
     server._running = False  # type: ignore[attr-defined]
+    server.sensor_depths = (0, 1, 2, 3, 4, 5)
     return server, influx, publisher
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -39,6 +40,10 @@ class BoundaryForcingServer:
         polling_interval: int = 5,
         rabbitmq_config: RabbitMQConfig | None = None,
         influx_config: InfluxConfig | None = None,
+        *,
+        synthetic_enabled: bool = False,
+        synthetic_start_day: float = 0.0,
+        synthetic_step_days: float = 1.0,
     ) -> None:
         self.logger = setup_logger("BoundaryForcingServer")
         self.polling_interval = polling_interval
@@ -58,6 +63,9 @@ class BoundaryForcingServer:
         self.mq_client: Optional[RabbitMQClient] = None
         self.influx: Optional[InfluxHelper] = None
         self._running = False
+        self._synthetic_enabled = synthetic_enabled
+        self._synthetic_time_days = synthetic_start_day
+        self._synthetic_step_days = synthetic_step_days
         self.logger.info("BoundaryForcingServer initialised with polling interval %ss.", polling_interval)
 
     def _latest_surface_sample(self, df: pd.DataFrame) -> Optional[pd.Series]:
@@ -93,6 +101,30 @@ class BoundaryForcingServer:
             time_days=float(latest_sample["time_days"]),
             Ts=float(latest_sample["temperature"]),
         )
+        if self._synthetic_enabled:
+            self._synthetic_time_days = float(message.time_days) + self._synthetic_step_days
+        return message
+
+    @staticmethod
+    def _sinusoid_air_temp(t_days: float) -> float:
+        """Seasonal surface temperature approximation reused for synthetic forcing."""
+        return 4.03 + 16.11 * math.sin((2 * math.pi * t_days / 365.0) - 1.709)
+
+    def _generate_synthetic_boundary(self) -> Optional[BoundaryMessage]:
+        if not self._synthetic_enabled:
+            return None
+
+        t_day = self._synthetic_time_days
+        Ts = self._sinusoid_air_temp(t_day)
+        self._synthetic_time_days += self._synthetic_step_days
+        message = BoundaryMessage(
+            timestamp=datetime.utcnow().isoformat(),
+            time_days=float(t_day),
+            Ts=float(Ts),
+        )
+        self.logger.debug(
+            "Generated synthetic boundary forcing: Ts=%.2f°C at t=%.2f days.", message.Ts, message.time_days
+        )
         return message
 
     def publish_boundary_forcing(self, message: BoundaryMessage) -> None:
@@ -118,8 +150,12 @@ class BoundaryForcingServer:
 
         dataframe = self.influx.query_temperature(limit=200)
         message = self.compute_boundary_forcing(dataframe)
+        if message is None:
+            message = self._generate_synthetic_boundary()
         if message is not None:
             self.publish_boundary_forcing(message)
+        else:
+            self.logger.debug("No boundary forcing generated this cycle.")
         return message
 
     def setup(self) -> None:

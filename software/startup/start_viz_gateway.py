@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import signal
 
-from software.digital_twin.communication.messaging import RabbitMQConfig
-from software.digital_twin.data_access.influx_utils import InfluxConfig
-import software.digital_twin.visualization.viz_gateway.viz_gateway_server as viz_module
+from software.startup.service_runners import (
+    build_influx_config,
+    create_viz_gateway_server,
+)
 from software.startup.utils.config import configure_logging, load_startup_config
 
 
@@ -17,28 +18,8 @@ def main() -> None:
     rabbit_cfg = config.get("rabbitmq", {})
     influx_cfg = config.get("influxdb", {})
 
-    server = viz_module.VizGatewayServer(
-        influx_config=InfluxConfig(
-            url=influx_cfg.get("url", "http://localhost:8086"),
-            token=influx_cfg.get("token", "permafrost"),
-            org=influx_cfg.get("org", "permafrost"),
-            bucket=influx_cfg.get("bucket", "permafrost_data"),
-            username=influx_cfg.get("username", "permafrost"),
-            password=influx_cfg.get("password", "permafrost"),
-        ),
-        inversion_queue_config=RabbitMQConfig(
-            host=rabbit_cfg.get("host", "localhost"),
-            schema_path=viz_module.PINN_INVERSION_SCHEMA,
-            username=rabbit_cfg.get("username", "permafrost"),
-            password=rabbit_cfg.get("password", "permafrost"),
-        ),
-        viz_queue_config=RabbitMQConfig(
-            host=rabbit_cfg.get("host", "localhost"),
-            schema_path=viz_module.VIZ_UPDATE_SCHEMA,
-            username=rabbit_cfg.get("username", "permafrost"),
-            password=rabbit_cfg.get("password", "permafrost"),
-        ),
-    )
+    influx_defaults = build_influx_config(influx_cfg)
+    server = create_viz_gateway_server(influx_defaults, rabbit_cfg)
 
     def shutdown_handler(*_args) -> None:
         server.close()

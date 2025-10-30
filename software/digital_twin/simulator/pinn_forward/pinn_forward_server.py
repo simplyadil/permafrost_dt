@@ -1,6 +1,7 @@
 # pylint: disable=too-many-instance-attributes
 """Physics-informed neural network forward server."""
 
+import json
 import os
 from datetime import datetime
 from pathlib import Path
@@ -19,11 +20,13 @@ FDM_QUEUE = "permafrost.record.fdm.state"
 PINN_FORWARD_QUEUE = "permafrost.record.pinn_forward.state"
 FDM_SCHEMA = Path(__file__).resolve().parents[2] / "communication" / "schemas" / "fdm_output_message.json"
 PINN_FORWARD_SCHEMA = Path(__file__).resolve().parents[2] / "communication" / "schemas" / "pinn_forward_output_message.json"
+PINN_HISTORY_FILENAME = "freezing_soil_pinn_history.json"
+TRAIN_EPOCHS = 20000
 
 
 class PINNForwardServer:
     """
-    Listens for FDM simulation updates and retrains a phase-change PINN surrogate model.
+    Listens for FDM simulation updates and maintains a phase-change PINN surrogate model.
     """
 
     def __init__(
@@ -32,6 +35,9 @@ class PINNForwardServer:
         fdm_queue_config: RabbitMQConfig | None = None,
         forward_queue_config: RabbitMQConfig | None = None,
         model_dir: str = "software/models/pinn_forward",
+        *,
+        enable_training: bool = True,
+        model_path: str | None = None,
     ) -> None:
         self.logger = setup_logger("PINNForwardServer")
         self.influx_config = influx_config or InfluxConfig()
@@ -60,6 +66,10 @@ class PINNForwardServer:
 
         self.model_dir = model_dir
         os.makedirs(self.model_dir, exist_ok=True)
+        self.enable_training = enable_training
+        default_checkpoint = Path(self.model_dir) / "freezing_soil_pinn.pt"
+        self.model_path = Path(model_path) if model_path is not None else default_checkpoint
+        self.history_path = Path(self.model_dir) / PINN_HISTORY_FILENAME
 
         self.influx: Optional[InfluxHelper] = None
         self.mq_client: Optional[RabbitMQClient] = None
@@ -81,15 +91,36 @@ class PINNForwardServer:
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
         self.pinn = FreezingSoilPINN(self.params, device=device, log_callback=self.logger.info)
+        self._load_pretrained_weights()
         self._running = False
         self.logger.info("PINNForwardServer configured.")
 
+    def _load_pretrained_weights(self) -> None:
+        """Load pretrained weights if available."""
+        if self.model_path.exists():
+            try:
+                self.pinn.load(str(self.model_path))
+            except Exception as exc:  # pragma: no cover - depends on file IO
+                self.logger.error("Failed to load PINN weights from %s: %s", self.model_path, exc)
+        else:
+            if self.enable_training:
+                self.logger.warning(
+                    "No pretrained PINN weights found at %s. Training will start from scratch.",
+                    self.model_path,
+                )
+            else:
+                self.logger.error(
+                    "PINN training disabled and checkpoint missing at %s. "
+                    "Inference will fail until a model is provided.",
+                    self.model_path,
+                )
+
     # -------------------------------
-    # TRAINING PIPELINE
+    # TRAINING / INFERENCE PIPELINE
     # -------------------------------
     def train_from_influx(self):
         """
-        Fetches FDM results and retrains the PINN model.
+        Fetches FDM results and either retrains or evaluates the PINN model.
         """
         if self.influx is None:
             raise RuntimeError("Influx helper not initialised. Did you call setup()?")
@@ -100,21 +131,50 @@ class PINNForwardServer:
             self.logger.error("No FDM data found in InfluxDB. Aborting training.")
             return
 
-        self.logger.info(f"Loaded {len(df)} rows of FDM temperature data for PINN training.")
+        self.logger.info("Loaded %s FDM temperature rows for PINN processing.", len(df))
 
-        # Train model
-        try:
-            self.pinn.train(x_domain=(0.0, 5.0), t_domain=(0.0, 365.0), epochs=20000, n_samples=5000)
-            self.pinn.save(model_dir=self.model_dir)
-        except Exception as e:
-            self.logger.error(f"Training failed: {e}")
-            return
+        status = "inferred"
+        summary = None
+        if self.enable_training:
+            try:
+                self.logger.info("Training enabled — starting PINN optimisation.")
+                summary = self.pinn.train(
+                    x_domain=(0.0, 5.0), t_domain=(0.0, 365.0), epochs=TRAIN_EPOCHS, n_samples=5000
+                )
+                self.pinn.save(model_dir=self.model_dir)
+                self.model_path = Path(self.model_dir) / "freezing_soil_pinn.pt"
+                self.pinn.model.eval()
+                status = "trained"
+            except Exception as exc:
+                self.logger.error("Training failed: %s", exc, exc_info=True)
+                return
+        else:
+            if not self.model_path.exists():
+                self.logger.error(
+                    "Cannot run inference. Expected pretrained PINN at %s.", self.model_path
+                )
+                return
+            self.logger.info(
+                "Training disabled — using pretrained weights at %s.", self.model_path
+            )
+            self._load_pretrained_weights()
 
-        # Generate predictions for each time-depth pair
-        x_vals = np.linspace(0, 5.0, 6)
+        self._write_predictions(df, status=status)
+        summary = self._persist_training_summary(status=status, epochs=TRAIN_EPOCHS if status == "trained" else 0, summary=summary)
+        self._publish_status(status=status, df=df, summary=summary)
+
+    def _write_predictions(self, df, *, status: str) -> None:
+        """Generate predictions and store/publish them."""
+        self.pinn.model.eval()
+        x_vals = np.linspace(0, 5.0, 50)
         for t_day in sorted(df["time_days"].unique()):
-            t_tensor = torch.full((len(x_vals), 1), float(t_day))
-            x_tensor = torch.tensor(x_vals).unsqueeze(1)
+            t_tensor = torch.full(
+                (len(x_vals), 1),
+                float(t_day),
+                device=self.pinn.device,
+                dtype=torch.float32,
+            )
+            x_tensor = torch.tensor(x_vals, device=self.pinn.device, dtype=torch.float32).unsqueeze(1)
             T_pred = self.pinn.predict(x_tensor, t_tensor).cpu().numpy()
 
             for depth, temp in zip(x_vals, T_pred):
@@ -127,16 +187,46 @@ class PINNForwardServer:
                     extra_tags={"model": "pinn"}
                 )
 
-        if self.out_publisher is not None:
-            message = {
-                "timestamp": datetime.utcnow().isoformat(),
-                "status": "trained",
-                "time_days": float(df["time_days"].max()),
-                "model_path": str(Path(self.model_dir) / "freezing_soil_pinn.pt"),
-            }
-            self.out_publisher.publish(message)
+        if status == "trained":
+            self.logger.info("✅ PINN retraining and prediction complete.")
+        else:
+            self.logger.info("✅ PINN inference complete using pretrained weights.")
 
-        self.logger.info("✅ PINN retraining and prediction complete.")
+    def _persist_training_summary(
+        self,
+        *,
+        status: str,
+        epochs: int,
+        summary: dict | None,
+    ) -> dict:
+        if status == "trained":
+            return self.pinn.save_training_summary(self.history_path, status=status, epochs=epochs, summary=summary)
+
+        if self.history_path.exists():
+            try:
+                content = json.loads(self.history_path.read_text())
+                return content
+            except Exception as exc:  # pragma: no cover - corrupted file
+                self.logger.warning("Failed to load cached PINN history: %s", exc)
+
+        fallback = self.pinn.build_training_summary(status=status, epochs=epochs)
+        self.history_path.parent.mkdir(parents=True, exist_ok=True)
+        self.history_path.write_text(json.dumps(fallback, indent=2))
+        return fallback
+
+    def _publish_status(self, *, status: str, df, summary: dict) -> None:
+        if self.out_publisher is None:
+            return
+
+        message = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "status": status,
+            "time_days": float(df["time_days"].max()),
+            "model_path": str(self.model_path),
+            "history_path": str(self.history_path),
+            "epochs": summary.get("epochs", 0),
+        }
+        self.out_publisher.publish(message)
 
     # -------------------------------
     # QUEUE HANDLER
@@ -147,8 +237,12 @@ class PINNForwardServer:
         """
         self.logger.info(f"Received message from FDM service: {msg}")
         if msg.get("status") == "ready":
-            self.logger.info("New FDM results detected — starting PINN retraining.")
-            Thread(target=self.train_from_influx, daemon=True).start()
+            if self.enable_training:
+                self.logger.info("New FDM results detected — starting PINN retraining.")
+                Thread(target=self.train_from_influx, daemon=True).start()
+            else:
+                self.logger.info("New FDM results detected — running PINN inference (training disabled).")
+                self.train_from_influx()
         else:
             self.logger.warning("Message ignored (no retraining trigger).")
 

@@ -26,6 +26,7 @@ def test_on_message_with_ready_triggers_training_thread() -> None:
     server._running = True  # type: ignore[attr-defined]
     server.mq_client = None  # type: ignore[attr-defined]
     server.influx = None  # type: ignore[attr-defined]
+    server.enable_training = True  # Add the missing attribute
     writes: list[str] = []
 
     def fake_train() -> None:

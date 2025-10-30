@@ -1,8 +1,42 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "VizUpdateMessage",
-  "description": "Aggregated visualization data for dashboards or external systems",
+  "description": "Aggregated visualization data for dashboards or external systems.",
   "type": "object",
+  "definitions": {
+    "numberArray": {
+      "type": "array",
+      "items": { "type": "number" }
+    },
+    "matrix": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "items": { "type": ["number", "null"] }
+      }
+    },
+    "grid": {
+      "type": "object",
+      "properties": {
+        "time_days": { "$ref": "#/definitions/numberArray" },
+        "depth_m": { "$ref": "#/definitions/numberArray" },
+        "temperature": { "$ref": "#/definitions/matrix" },
+        "abs_error": { "$ref": "#/definitions/matrix" }
+      },
+      "required": ["time_days", "depth_m"],
+      "additionalProperties": false
+    },
+    "seriesEntry": {
+      "type": "object",
+      "properties": {
+        "depth_m": { "type": "number" },
+        "time_days": { "$ref": "#/definitions/numberArray" },
+        "temperature": { "$ref": "#/definitions/numberArray" }
+      },
+      "required": ["depth_m", "time_days", "temperature"],
+      "additionalProperties": false
+    }
+  },
   "properties": {
     "timestamp": { "type": "string", "format": "date-time" },
     "status": { "type": "string" },
@@ -11,19 +45,185 @@
       "properties": {
         "fdm_points": { "type": "integer" },
         "pinn_points": { "type": "integer" },
-        "inversion_points": { "type": "integer" }
-      }
+        "comparison_pairs": { "type": "integer" },
+        "history_available": {
+          "type": "object",
+          "properties": {
+            "pinn_forward": { "type": "boolean" },
+            "pinn_inversion": { "type": "boolean" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": ["fdm_points", "pinn_points", "comparison_pairs"],
+      "additionalProperties": false
     },
-    "parameters": {
+    "fdm": {
       "type": "object",
       "properties": {
-        "lambda_f": { "type": ["number", "null"] },
-        "C_f": { "type": ["number", "null"] },
-        "eta": { "type": ["number", "null"] },
-        "b": { "type": ["number", "null"] },
-        "T_nabla": { "type": ["number", "null"] }
-      }
+        "grid": { "$ref": "#/definitions/grid" },
+        "series": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/seriesEntry" }
+        },
+        "snapshots": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "time_days": { "type": "number" },
+              "depth_m": { "$ref": "#/definitions/numberArray" },
+              "temperature": { "$ref": "#/definitions/numberArray" }
+            },
+            "required": ["time_days", "depth_m", "temperature"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["grid", "series", "snapshots"],
+      "additionalProperties": false
+    },
+    "pinn_forward": {
+      "type": "object",
+      "properties": {
+        "grid": { "$ref": "#/definitions/grid" },
+        "series": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/seriesEntry" }
+        },
+        "snapshots": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "time_days": { "type": "number" },
+              "depth_m": { "$ref": "#/definitions/numberArray" },
+              "temperature": { "$ref": "#/definitions/numberArray" }
+            },
+            "required": ["time_days", "depth_m", "temperature"],
+            "additionalProperties": false
+          }
+        },
+        "history": { "type": "object" },
+        "metadata": {
+          "type": "object",
+          "properties": {
+            "status": { "type": ["string", "null"] },
+            "epochs": { "type": ["integer", "null"] },
+            "timestamp": { "type": ["string", "null"] },
+            "history_path": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": ["grid", "series", "snapshots", "history", "metadata"],
+      "additionalProperties": false
+    },
+    "comparison": {
+      "type": "object",
+      "properties": {
+        "abs_error_grid": { "$ref": "#/definitions/grid" },
+        "stats": {
+          "type": "object",
+          "properties": {
+            "overall": {
+              "type": "object",
+              "properties": {
+                "mean_abs_error": { "type": ["number", "null"] },
+                "max_abs_error": { "type": ["number", "null"] }
+              },
+              "required": ["mean_abs_error", "max_abs_error"],
+              "additionalProperties": false
+            },
+            "per_depth": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "depth_m": { "type": "number" },
+                  "mean_abs_error": { "type": ["number", "null"] },
+                  "max_abs_error": { "type": ["number", "null"] }
+                },
+                "required": ["depth_m", "mean_abs_error", "max_abs_error"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": ["overall", "per_depth"],
+          "additionalProperties": false
+        },
+        "per_depth_series": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "depth_m": { "type": "number" },
+              "time_days": { "$ref": "#/definitions/numberArray" },
+              "fdm": { "$ref": "#/definitions/numberArray" },
+              "pinn": { "$ref": "#/definitions/numberArray" },
+              "abs_error": { "$ref": "#/definitions/numberArray" }
+            },
+            "required": ["depth_m", "time_days", "fdm", "pinn", "abs_error"],
+            "additionalProperties": false
+          }
+        },
+        "snapshots": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "time_days": { "type": "number" },
+              "depth_m": { "$ref": "#/definitions/numberArray" },
+              "fdm": { "$ref": "#/definitions/numberArray" },
+              "pinn": { "$ref": "#/definitions/numberArray" },
+              "abs_error": { "$ref": "#/definitions/numberArray" }
+            },
+            "required": ["time_days", "depth_m", "fdm", "pinn", "abs_error"],
+            "additionalProperties": false
+          }
+        },
+        "pair_count": { "type": "integer" }
+      },
+      "required": ["abs_error_grid", "stats", "per_depth_series", "snapshots", "pair_count"],
+      "additionalProperties": false
+    },
+    "inversion": {
+      "type": "object",
+      "properties": {
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "lambda_f": { "type": ["number", "null"] },
+            "C_f": { "type": ["number", "null"] },
+            "eta": { "type": ["number", "null"] },
+            "b": { "type": ["number", "null"] },
+            "T_nabla": { "type": ["number", "null"] }
+          },
+          "additionalProperties": true
+        },
+        "history": { "type": "object" },
+        "history_path": { "type": "string" },
+        "message": {
+          "type": "object",
+          "properties": {
+            "timestamp": { "type": ["string", "null"] },
+            "status": { "type": ["string", "null"] },
+            "validation_overall": {
+              "type": ["object", "null"],
+              "properties": {
+                "mean_abs_error": { "type": ["number", "null"] },
+                "max_abs_error": { "type": ["number", "null"] }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": ["parameters", "history", "history_path", "message"],
+      "additionalProperties": false
     }
   },
-  "required": ["timestamp", "status", "data_summary"]
+  "required": ["timestamp", "status", "data_summary", "fdm", "pinn_forward", "comparison", "inversion"],
+  "additionalProperties": false
 }
