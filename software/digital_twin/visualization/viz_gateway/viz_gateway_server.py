@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 
 from software.digital_twin.communication.logger import setup_logger
-from software.digital_twin.communication.messaging import RabbitMQClient, RabbitMQConfig
+from software.digital_twin.communication.messaging import RabbitMQClient, RabbitMQConfig, resolve_queue_config
 from software.digital_twin.data_access.influx_utils import InfluxConfig, InfluxHelper
 
 PINN_INVERSION_QUEUE = "permafrost.record.pinn_inversion.state"
@@ -42,26 +42,16 @@ class VizGatewayServer:
         self.logger = setup_logger("VizGatewayServer")
         self.influx_config = influx_config or InfluxConfig()
 
-        if inversion_queue_config is not None and inversion_queue_config.schema_path is None:
-            inversion_queue_config = RabbitMQConfig(
-                host=inversion_queue_config.host,
-                queue=inversion_queue_config.queue,
-                schema_path=PINN_INVERSION_SCHEMA,
-                username=inversion_queue_config.username,
-                password=inversion_queue_config.password,
-            )
-        if viz_queue_config is not None and viz_queue_config.schema_path is None:
-            viz_queue_config = RabbitMQConfig(
-                host=viz_queue_config.host,
-                queue=viz_queue_config.queue,
-                schema_path=VIZ_UPDATE_SCHEMA,
-                username=viz_queue_config.username,
-                password=viz_queue_config.password,
-            )
-        inversion_base = inversion_queue_config or RabbitMQConfig(schema_path=PINN_INVERSION_SCHEMA)
-        viz_base = viz_queue_config or RabbitMQConfig(schema_path=VIZ_UPDATE_SCHEMA)
-        self.inversion_queue_config = inversion_base.with_queue(PINN_INVERSION_QUEUE)
-        self.viz_queue_config = viz_base.with_queue(VIZ_UPDATE_QUEUE)
+        self.inversion_queue_config = resolve_queue_config(
+            inversion_queue_config,
+            queue=PINN_INVERSION_QUEUE,
+            schema_path=PINN_INVERSION_SCHEMA,
+        )
+        self.viz_queue_config = resolve_queue_config(
+            viz_queue_config,
+            queue=VIZ_UPDATE_QUEUE,
+            schema_path=VIZ_UPDATE_SCHEMA,
+        )
         self.queue_in = self.inversion_queue_config.queue
         self.queue_out = self.viz_queue_config.queue
 
@@ -71,7 +61,6 @@ class VizGatewayServer:
 
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
-        self._running = False
         self.logger.info("VizGatewayServer configured.")
 
     # -------------------------------
@@ -432,7 +421,6 @@ class VizGatewayServer:
             self.out_publisher = RabbitMQClient(self.viz_queue_config)
         self.queue_in = self.inversion_queue_config.queue
         self.queue_out = self.viz_queue_config.queue
-        self._running = True
         self.logger.info("VizGatewayServer setup complete.")
 
     def start(self) -> None:
@@ -451,7 +439,6 @@ class VizGatewayServer:
     def stop(self) -> None:
         """Stop consuming messages."""
 
-        self._running = False
         if self.mq_client and self.mq_client.channel:
             self.mq_client.channel.stop_consuming()
 

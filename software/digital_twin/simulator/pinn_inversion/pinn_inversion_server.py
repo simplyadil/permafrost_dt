@@ -12,7 +12,7 @@ import pandas as pd
 import torch
 
 from software.digital_twin.communication.logger import setup_logger
-from software.digital_twin.communication.messaging import RabbitMQClient, RabbitMQConfig
+from software.digital_twin.communication.messaging import RabbitMQClient, RabbitMQConfig, resolve_queue_config
 from software.digital_twin.data_access.influx_utils import InfluxConfig, InfluxHelper
 from software.digital_twin.simulator.pinn_inversion.inversion_pinn_model import InversionFreezingSoilPINN
 
@@ -40,26 +40,16 @@ class PINNInversionServer:
     ) -> None:
         self.logger = setup_logger("PINNInversionServer")
         self.influx_config = influx_config or InfluxConfig()
-        if fdm_queue_config is not None and fdm_queue_config.schema_path is None:
-            fdm_queue_config = RabbitMQConfig(
-                host=fdm_queue_config.host,
-                queue=fdm_queue_config.queue,
-                schema_path=FDM_SCHEMA,
-                username=fdm_queue_config.username,
-                password=fdm_queue_config.password,
-            )
-        if inversion_queue_config is not None and inversion_queue_config.schema_path is None:
-            inversion_queue_config = RabbitMQConfig(
-                host=inversion_queue_config.host,
-                queue=inversion_queue_config.queue,
-                schema_path=PINN_INVERSION_SCHEMA,
-                username=inversion_queue_config.username,
-                password=inversion_queue_config.password,
-            )
-        fdm_base = fdm_queue_config or RabbitMQConfig(schema_path=FDM_SCHEMA)
-        inversion_base = inversion_queue_config or RabbitMQConfig(schema_path=PINN_INVERSION_SCHEMA)
-        self.fdm_queue_config = fdm_base.with_queue(FDM_QUEUE)
-        self.inversion_queue_config = inversion_base.with_queue(PINN_INVERSION_QUEUE)
+        self.fdm_queue_config = resolve_queue_config(
+            fdm_queue_config,
+            queue=FDM_QUEUE,
+            schema_path=FDM_SCHEMA,
+        )
+        self.inversion_queue_config = resolve_queue_config(
+            inversion_queue_config,
+            queue=PINN_INVERSION_QUEUE,
+            schema_path=PINN_INVERSION_SCHEMA,
+        )
 
         self.influx: Optional[InfluxHelper] = None
         self.mq_client: Optional[RabbitMQClient] = None
@@ -91,7 +81,6 @@ class PINNInversionServer:
             log_callback=self.logger.info,
         )
         self._load_pretrained_weights()
-        self._running = False
         self.logger.info("PINNInversionServer configured.")
 
     def _on_message(self, msg):
@@ -256,7 +245,6 @@ class PINNInversionServer:
             self.mq_client = RabbitMQClient(self.fdm_queue_config)
         if self.out_publisher is None:
             self.out_publisher = RabbitMQClient(self.inversion_queue_config)
-        self._running = True
         self.logger.info("PINNInversionServer setup complete.")
 
     def start(self) -> None:
@@ -275,7 +263,6 @@ class PINNInversionServer:
     def stop(self) -> None:
         """Stop consuming messages."""
 
-        self._running = False
         if self.mq_client and self.mq_client.channel:
             self.mq_client.channel.stop_consuming()
 

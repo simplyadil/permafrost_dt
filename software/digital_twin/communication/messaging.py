@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Callable, Dict, Mapping, Optional
 
@@ -18,19 +18,6 @@ Message = Dict[str, Any]
 MessageCallback = Callable[[Message], None]
 
 
-# Legacy RabbitMQConfig without credentials retained for reference:
-# @dataclass(frozen=True)
-# class RabbitMQConfig:
-#     """Configuration payload for connecting to RabbitMQ."""
-#
-#     host: str = "localhost"
-#     queue: str = ""
-#     schema_path: Optional[Path | str] = None
-#
-#     def with_queue(self, queue: str) -> "RabbitMQConfig":
-#         return RabbitMQConfig(host=self.host, queue=queue, schema_path=self.schema_path)
-
-
 @dataclass(frozen=True)
 class RabbitMQConfig:
     """Configuration payload for connecting to RabbitMQ."""
@@ -41,14 +28,20 @@ class RabbitMQConfig:
     username: str = "permafrost"
     password: str = "permafrost"
 
-    def with_queue(self, queue: str) -> "RabbitMQConfig":
-        return RabbitMQConfig(
-            host=self.host,
-            queue=queue,
-            schema_path=self.schema_path,
-            username=self.username,
-            password=self.password,
-        )
+
+def resolve_queue_config(
+    config: RabbitMQConfig | None,
+    *,
+    queue: str,
+    schema_path: Path | str,
+) -> RabbitMQConfig:
+    """Normalise queue configuration with a default schema when missing."""
+
+    if config is None:
+        config = RabbitMQConfig(schema_path=schema_path)
+    elif config.schema_path is None:
+        config = replace(config, schema_path=schema_path)
+    return replace(config, queue=queue)
 
 
 class RabbitMQClient:
@@ -89,8 +82,6 @@ class RabbitMQClient:
             return
 
         try:
-            # Legacy static credentials:
-            # credentials = pika.PlainCredentials("permafrost", "permafrost")
             credentials = pika.PlainCredentials(self.config.username, self.config.password)
             self.connection = pika.BlockingConnection(
                 pika.ConnectionParameters(host=self.host, credentials=credentials, heartbeat=600)

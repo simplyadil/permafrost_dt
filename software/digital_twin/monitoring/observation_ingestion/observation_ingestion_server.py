@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Optional
 
 from software.digital_twin.communication.logger import setup_logger
-from software.digital_twin.communication.messaging import RabbitMQClient, RabbitMQConfig
+from software.digital_twin.communication.messaging import RabbitMQClient, RabbitMQConfig, resolve_queue_config
 from software.digital_twin.data_access.influx_utils import InfluxConfig, InfluxHelper
 
 SENSOR_QUEUE = "permafrost.record.sensors.state"
@@ -25,22 +25,14 @@ class ObservationIngestionServer:
         influx_config: InfluxConfig | None = None,
     ) -> None:
         self.logger = setup_logger("ObservationIngestionServer")
-        # Legacy direct fallback without schema reconciliation:
-        # base_config = rabbitmq_config or RabbitMQConfig(schema_path=SCHEMA_PATH)
-        if rabbitmq_config is not None and rabbitmq_config.schema_path is None:
-            rabbitmq_config = RabbitMQConfig(
-                host=rabbitmq_config.host,
-                queue=rabbitmq_config.queue,
-                schema_path=SCHEMA_PATH,
-                username=rabbitmq_config.username,
-                password=rabbitmq_config.password,
-            )
-        base_config = rabbitmq_config or RabbitMQConfig(schema_path=SCHEMA_PATH)
-        self.rabbitmq_config = base_config.with_queue(SENSOR_QUEUE)
+        self.rabbitmq_config = resolve_queue_config(
+            rabbitmq_config,
+            queue=SENSOR_QUEUE,
+            schema_path=SCHEMA_PATH,
+        )
         self.influx_config = influx_config or InfluxConfig()
         self.mq_client: Optional[RabbitMQClient] = None
         self.db: Optional[InfluxHelper] = None
-        self._running = False
         self.logger.info("ObservationIngestionServer configured.")
 
     # -----------------------------------------------------
@@ -81,7 +73,6 @@ class ObservationIngestionServer:
             self.mq_client = RabbitMQClient(self.rabbitmq_config)
         if self.db is None:
             self.db = InfluxHelper(self.influx_config)
-        self._running = True
         self.logger.info("ObservationIngestionServer setup complete.")
 
     def start(self) -> None:
@@ -101,7 +92,6 @@ class ObservationIngestionServer:
     def stop(self) -> None:
         """Signal the server to stop consuming."""
 
-        self._running = False
         if self.mq_client and self.mq_client.channel:
             self.mq_client.channel.stop_consuming()
 

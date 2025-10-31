@@ -10,9 +10,7 @@ from typing import Optional
 import numpy as np
 
 from software.digital_twin.communication.logger import setup_logger
-from software.digital_twin.communication.messaging import RabbitMQClient, RabbitMQConfig
-# Legacy import without depth parsing helper retained for context:
-# from software.digital_twin.data_access.influx_utils import InfluxConfig, InfluxHelper
+from software.digital_twin.communication.messaging import RabbitMQClient, RabbitMQConfig, resolve_queue_config
 from software.digital_twin.data_access.influx_utils import InfluxConfig, InfluxHelper, _parse_depth_value
 
 
@@ -68,36 +66,25 @@ class FDMServer:
         self.logger = setup_logger("FDMServer")
         self.influx_config = influx_config or InfluxConfig()
 
-        if boundary_config is not None and boundary_config.schema_path is None:
-            boundary_config = RabbitMQConfig(
-                host=boundary_config.host,
-                queue=boundary_config.queue,
-                schema_path=BOUNDARY_SCHEMA,
-                username=boundary_config.username,
-                password=boundary_config.password,
-            )
-        if outbound_config is not None and outbound_config.schema_path is None:
-            outbound_config = RabbitMQConfig(
-                host=outbound_config.host,
-                queue=outbound_config.queue,
-                schema_path=FDM_SCHEMA,
-                username=outbound_config.username,
-                password=outbound_config.password,
-            )
-        if sensor_config is not None and sensor_config.schema_path is None:
-            sensor_config = RabbitMQConfig(
-                host=sensor_config.host,
-                queue=sensor_config.queue,
+        self.boundary_config = resolve_queue_config(
+            boundary_config,
+            queue=BOUNDARY_QUEUE,
+            schema_path=BOUNDARY_SCHEMA,
+        )
+        self.outbound_config = resolve_queue_config(
+            outbound_config,
+            queue=FDM_QUEUE,
+            schema_path=FDM_SCHEMA,
+        )
+        self.sensor_config = (
+            resolve_queue_config(
+                sensor_config,
+                queue=SENSOR_QUEUE,
                 schema_path=SENSOR_SCHEMA,
-                username=sensor_config.username,
-                password=sensor_config.password,
             )
-        boundary_base = boundary_config or RabbitMQConfig(schema_path=BOUNDARY_SCHEMA)
-        outbound_base = outbound_config or RabbitMQConfig(schema_path=FDM_SCHEMA)
-        sensor_base = sensor_config
-        self.boundary_config = boundary_base.with_queue(BOUNDARY_QUEUE)
-        self.outbound_config = outbound_base.with_queue(FDM_QUEUE)
-        self.sensor_config = sensor_base.with_queue(SENSOR_QUEUE) if sensor_base is not None else None
+            if sensor_config is not None
+            else None
+        )
 
         self.mq_in: Optional[RabbitMQClient] = None
         self.mq_out: Optional[RabbitMQClient] = None
@@ -132,7 +119,6 @@ class FDMServer:
         self.bottom_bc_temp = 1.0  # °C
 
         # Initialize from an observed snapshot if available; else linear profile
-        self._running = False
         self.logger.info("FDMServer configured.")
 
     # ---------------------------
@@ -396,7 +382,6 @@ class FDMServer:
         if self.sensor_config is not None and self.mq_sensor is None:
             self.mq_sensor = RabbitMQClient(self.sensor_config)
         self._initialize_state()
-        self._running = True
         self.logger.info("FDMServer setup complete.")
 
     def start(self) -> None:
@@ -415,7 +400,6 @@ class FDMServer:
     def stop(self) -> None:
         """Signal the run loop to stop."""
 
-        self._running = False
         if self.mq_in and self.mq_in.channel:
             self.mq_in.channel.stop_consuming()
 

@@ -12,7 +12,7 @@ import numpy as np
 import torch
 
 from software.digital_twin.communication.logger import setup_logger
-from software.digital_twin.communication.messaging import RabbitMQClient, RabbitMQConfig
+from software.digital_twin.communication.messaging import RabbitMQClient, RabbitMQConfig, resolve_queue_config
 from software.digital_twin.data_access.influx_utils import InfluxConfig, InfluxHelper
 from software.digital_twin.simulator.pinn_forward.freezing_soil_pinn import FreezingSoilPINN
 
@@ -41,28 +41,16 @@ class PINNForwardServer:
     ) -> None:
         self.logger = setup_logger("PINNForwardServer")
         self.influx_config = influx_config or InfluxConfig()
-        # Legacy base_config assignment occurred before schema reconciliation.
-        # base_config = fdm_queue_config or RabbitMQConfig(schema_path=FDM_SCHEMA)
-        if fdm_queue_config is not None and fdm_queue_config.schema_path is None:
-            fdm_queue_config = RabbitMQConfig(
-                host=fdm_queue_config.host,
-                queue=fdm_queue_config.queue,
-                schema_path=FDM_SCHEMA,
-                username=fdm_queue_config.username,
-                password=fdm_queue_config.password,
-            )
-        base_config = fdm_queue_config or RabbitMQConfig(schema_path=FDM_SCHEMA)
-        self.fdm_queue_config = base_config.with_queue(FDM_QUEUE)
-        if forward_queue_config is not None and forward_queue_config.schema_path is None:
-            forward_queue_config = RabbitMQConfig(
-                host=forward_queue_config.host,
-                queue=forward_queue_config.queue,
-                schema_path=PINN_FORWARD_SCHEMA,
-                username=forward_queue_config.username,
-                password=forward_queue_config.password,
-            )
-        output_base = forward_queue_config or RabbitMQConfig(schema_path=PINN_FORWARD_SCHEMA)
-        self.forward_queue_config = output_base.with_queue(PINN_FORWARD_QUEUE)
+        self.fdm_queue_config = resolve_queue_config(
+            fdm_queue_config,
+            queue=FDM_QUEUE,
+            schema_path=FDM_SCHEMA,
+        )
+        self.forward_queue_config = resolve_queue_config(
+            forward_queue_config,
+            queue=PINN_FORWARD_QUEUE,
+            schema_path=PINN_FORWARD_SCHEMA,
+        )
 
         self.model_dir = model_dir
         os.makedirs(self.model_dir, exist_ok=True)
@@ -92,7 +80,6 @@ class PINNForwardServer:
         device = "cuda" if torch.cuda.is_available() else "cpu"
         self.pinn = FreezingSoilPINN(self.params, device=device, log_callback=self.logger.info)
         self._load_pretrained_weights()
-        self._running = False
         self.logger.info("PINNForwardServer configured.")
 
     def _load_pretrained_weights(self) -> None:
@@ -267,7 +254,6 @@ class PINNForwardServer:
             self.mq_client = RabbitMQClient(self.fdm_queue_config)
         if self.out_publisher is None:
             self.out_publisher = RabbitMQClient(self.forward_queue_config)
-        self._running = True
         self.logger.info("PINNForwardServer setup complete.")
 
     def start(self) -> None:
@@ -286,7 +272,6 @@ class PINNForwardServer:
     def stop(self) -> None:
         """Stop consuming further messages."""
 
-        self._running = False
         if self.mq_client and self.mq_client.channel:
             self.mq_client.channel.stop_consuming()
 

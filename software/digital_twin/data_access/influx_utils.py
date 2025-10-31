@@ -56,15 +56,6 @@ class InfluxHelper:
             self.query_api = None
 
     def write_temperature(self, time_days, depth, temperature, site="default"):
-        # Legacy point without explicit depth_m field retained for reference.
-        # point = (
-        #     Point("sensor_temperature")
-        #     .tag("site_id", site)
-        #     .tag("depth", f"{depth:.1f}m")
-        #     .field("temperature", float(temperature))
-        #     .field("time_days", float(time_days))
-        #     .time(datetime.datetime.utcnow(), write_precision=WritePrecision.NS)
-        # )
         point = (
             Point("sensor_temperature")
             .tag("site_id", site)

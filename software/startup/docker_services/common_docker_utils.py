@@ -1,4 +1,3 @@
-# software/startup/docker_services/utils_docker_service_starter.py
 from __future__ import annotations
 
 import subprocess
@@ -95,16 +94,3 @@ def start_service(config: DockerServiceConfig) -> None:
     _run_compose(config)
     _wait_for_health(config)
 
-
-def start(log_file: str, compose_dir: str, test_func, sleep_time: int, max_attempts: int):
-    """Backward compatible wrapper for legacy callers."""
-
-    config = DockerServiceConfig(
-        container_name=f"{Path(compose_dir).name}-server",
-        compose_directory=Path(compose_dir),
-        log_file=Path(log_file),
-        healthcheck=test_func,
-        sleep_time=float(sleep_time),
-        max_attempts=int(max_attempts),
-    )
-    start_service(config)

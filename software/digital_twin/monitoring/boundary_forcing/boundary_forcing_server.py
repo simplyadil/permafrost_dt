@@ -10,9 +10,7 @@ from typing import Optional
 import pandas as pd
 
 from software.digital_twin.communication.logger import setup_logger
-from software.digital_twin.communication.messaging import RabbitMQClient, RabbitMQConfig
-# Legacy import without access to depth parser kept for reference:
-# from software.digital_twin.data_access.influx_utils import InfluxConfig, InfluxHelper
+from software.digital_twin.communication.messaging import RabbitMQClient, RabbitMQConfig, resolve_queue_config
 from software.digital_twin.data_access.influx_utils import (
     InfluxConfig,
     InfluxHelper,
@@ -47,18 +45,11 @@ class BoundaryForcingServer:
     ) -> None:
         self.logger = setup_logger("BoundaryForcingServer")
         self.polling_interval = polling_interval
-        # Legacy direct fallback without schema reconciliation:
-        # base_config = rabbitmq_config or RabbitMQConfig(schema_path=SCHEMA_PATH)
-        if rabbitmq_config is not None and rabbitmq_config.schema_path is None:
-            rabbitmq_config = RabbitMQConfig(
-                host=rabbitmq_config.host,
-                queue=rabbitmq_config.queue,
-                schema_path=SCHEMA_PATH,
-                username=rabbitmq_config.username,
-                password=rabbitmq_config.password,
-            )
-        base_config = rabbitmq_config or RabbitMQConfig(schema_path=SCHEMA_PATH)
-        self.rabbitmq_config = base_config.with_queue(BOUNDARY_QUEUE)
+        self.rabbitmq_config = resolve_queue_config(
+            rabbitmq_config,
+            queue=BOUNDARY_QUEUE,
+            schema_path=SCHEMA_PATH,
+        )
         self.influx_config = influx_config or InfluxConfig()
         self.mq_client: Optional[RabbitMQClient] = None
         self.influx: Optional[InfluxHelper] = None
