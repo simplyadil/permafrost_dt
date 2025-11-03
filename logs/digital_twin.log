@@ -1,0 +1,688 @@
+2025-10-31 18:58:30 [INFO] [ObservationIngestionServer] [observation_ingestion_server] ObservationIngestionServer configured.
+2025-10-31 18:58:30 [INFO] [ObservationIngestionServer] [observation_ingestion_server] Dependencies initialised (queue=permafrost.record.sensors.state)
+2025-10-31 18:58:30 [INFO] [ObservationIngestionServer] [observation_ingestion_server] Listening for sensor updates on permafrost.record.sensors.state
+2025-10-31 18:58:30 [INFO] [BoundaryForcingServer] [boundary_forcing_server] Configured (poll_interval=5s, queue=permafrost.record.boundary.state, synthetic=on)
+2025-10-31 18:58:30 [INFO] [RabbitMQClient] [messaging] RabbitMQ connected (host=localhost, queue=permafrost.record.sensors.state)
+2025-10-31 18:58:30 [INFO] [RabbitMQClient] [messaging] Started consuming queue permafrost.record.sensors.state
+2025-10-31 18:58:30 [INFO] [BoundaryForcingServer] [boundary_forcing_server] Dependencies initialised (queue=permafrost.record.boundary.state)
+2025-10-31 18:58:30 [INFO] [BoundaryForcingServer] [boundary_forcing_server] Polling boundary data every 5s
+2025-10-31 18:58:30 [INFO] [FDMServer] [fdm_server] Configured (inbound=permafrost.record.boundary.state, outbound=permafrost.record.fdm.state, sensors=permafrost.record.sensors.state)
+2025-10-31 18:58:30 [INFO] [RabbitMQClient] [messaging] RabbitMQ connected (host=localhost, queue=permafrost.record.boundary.state)
+2025-10-31 18:58:30 [INFO] [RabbitMQClient] [messaging] Published message to permafrost.record.boundary.state (keys=3)
+2025-10-31 18:58:30 [INFO] [BoundaryForcingServer] [boundary_forcing_server] Published boundary conditions (t=0.00d, Ts=-11.93°C) to permafrost.record.boundary.state
+2025-10-31 18:58:30 [INFO] [FDMServer] [fdm_server] Loaded sensor snapshot (t=0.00d, depths=300)
+2025-10-31 18:58:30 [INFO] [FDMServer] [fdm_server] Dependencies ready (inbound=permafrost.record.boundary.state, outbound=permafrost.record.fdm.state, sensor=permafrost.record.sensors.state)
+2025-10-31 18:58:30 [INFO] [FDMServer] [fdm_server] Listening for boundary forcing on permafrost.record.boundary.state
+2025-10-31 18:58:30 [INFO] [RabbitMQClient] [messaging] RabbitMQ connected (host=localhost, queue=permafrost.record.boundary.state)
+2025-10-31 18:58:30 [INFO] [RabbitMQClient] [messaging] Started consuming queue permafrost.record.boundary.state
+2025-10-31 18:58:30 [INFO] [RabbitMQClient] [messaging] Consumed message from permafrost.record.boundary.state (keys=3)
+2025-10-31 18:58:30 [INFO] [InfluxDB] [influx_utils] fdm_simulation write complete (t=0.00d, depths=50, min=-11.93°C, max=1.00°C, mean=-5.46°C)
+2025-10-31 18:58:30 [INFO] [FDMServer] [fdm_server] Advanced simulation step (t=0.00d, depths=50, Ts=-11.93°C)
+2025-10-31 18:58:30 [INFO] [RabbitMQClient] [messaging] RabbitMQ connected (host=localhost, queue=permafrost.record.sensors.state)
+2025-10-31 18:58:30 [INFO] [RabbitMQClient] [messaging] Published message to permafrost.record.sensors.state (keys=9)
+2025-10-31 18:58:30 [INFO] [FDMServer] [fdm_server] Published synthetic sensors (t=0.00d, depths=6) to permafrost.record.sensors.state
+2025-10-31 18:58:30 [INFO] [RabbitMQClient] [messaging] Consumed message from permafrost.record.sensors.state (keys=9)
+2025-10-31 18:58:30 [INFO] [RabbitMQClient] [messaging] RabbitMQ connected (host=localhost, queue=permafrost.record.fdm.state)
+2025-10-31 18:58:30 [INFO] [RabbitMQClient] [messaging] Published message to permafrost.record.fdm.state (keys=3)
+2025-10-31 18:58:30 [INFO] [FDMServer] [fdm_server] Announced FDM readiness (t=0.00d) to permafrost.record.fdm.state
+2025-10-31 18:58:30 [INFO] [InfluxDB] [influx_utils] sensor_temperature write complete (t=0.00d, depths=6, min=-11.93°C, max=1.00°C, mean=-5.46°C)
+2025-10-31 18:58:30 [INFO] [ObservationIngestionServer] [observation_ingestion_server] Persisted sensor snapshot (t=0.00d, depths=6)
+2025-10-31 18:58:35 [INFO] [RabbitMQClient] [messaging] Published message to permafrost.record.boundary.state (keys=3)
+2025-10-31 18:58:35 [INFO] [BoundaryForcingServer] [boundary_forcing_server] Published boundary conditions (t=0.00d, Ts=-11.93°C) to permafrost.record.boundary.state
+2025-10-31 18:58:35 [INFO] [RabbitMQClient] [messaging] Consumed message from permafrost.record.boundary.state (keys=3)
+2025-10-31 18:58:35 [INFO] [InfluxDB] [influx_utils] fdm_simulation write complete (t=0.00d, depths=50, min=-11.93°C, max=1.00°C, mean=-5.46°C)
+2025-10-31 18:58:35 [INFO] [FDMServer] [fdm_server] Advanced simulation step (t=0.00d, depths=50, Ts=-11.93°C)
+2025-10-31 18:58:35 [INFO] [RabbitMQClient] [messaging] Published message to permafrost.record.sensors.state (keys=9)
+2025-10-31 18:58:35 [INFO] [FDMServer] [fdm_server] Published synthetic sensors (t=0.00d, depths=6) to permafrost.record.sensors.state
+2025-10-31 18:58:35 [INFO] [RabbitMQClient] [messaging] Published message to permafrost.record.fdm.state (keys=3)
+2025-10-31 18:58:35 [INFO] [FDMServer] [fdm_server] Announced FDM readiness (t=0.00d) to permafrost.record.fdm.state
+2025-10-31 18:58:35 [INFO] [RabbitMQClient] [messaging] Consumed message from permafrost.record.sensors.state (keys=9)
+2025-10-31 18:58:35 [INFO] [InfluxDB] [influx_utils] sensor_temperature write complete (t=0.00d, depths=6, min=-11.93°C, max=1.00°C, mean=-5.46°C)
+2025-10-31 18:58:35 [INFO] [ObservationIngestionServer] [observation_ingestion_server] Persisted sensor snapshot (t=0.00d, depths=6)
+2025-10-31 18:58:40 [INFO] [RabbitMQClient] [messaging] Published message to permafrost.record.boundary.state (keys=3)
+2025-10-31 18:58:40 [INFO] [BoundaryForcingServer] [boundary_forcing_server] Published boundary conditions (t=0.00d, Ts=-11.93°C) to permafrost.record.boundary.state
+2025-10-31 18:58:40 [INFO] [RabbitMQClient] [messaging] Consumed message from permafrost.record.boundary.state (keys=3)
+2025-10-31 18:58:40 [INFO] [InfluxDB] [influx_utils] fdm_simulation write complete (t=0.00d, depths=50, min=-11.93°C, max=1.00°C, mean=-5.46°C)
+2025-10-31 18:58:40 [INFO] [FDMServer] [fdm_server] Advanced simulation step (t=0.00d, depths=50, Ts=-11.93°C)
+2025-10-31 18:58:40 [INFO] [RabbitMQClient] [messaging] Published message to permafrost.record.sensors.state (keys=9)
+2025-10-31 18:58:40 [INFO] [FDMServer] [fdm_server] Published synthetic sensors (t=0.00d, depths=6) to permafrost.record.sensors.state
+2025-10-31 18:58:40 [INFO] [RabbitMQClient] [messaging] Published message to permafrost.record.fdm.state (keys=3)
+2025-10-31 18:58:40 [INFO] [FDMServer] [fdm_server] Announced FDM readiness (t=0.00d) to permafrost.record.fdm.state
+2025-10-31 18:58:40 [INFO] [RabbitMQClient] [messaging] Consumed message from permafrost.record.sensors.state (keys=9)
+2025-10-31 18:58:40 [INFO] [InfluxDB] [influx_utils] sensor_temperature write complete (t=0.00d, depths=6, min=-11.93°C, max=1.00°C, mean=-5.46°C)
+2025-10-31 18:58:40 [INFO] [ObservationIngestionServer] [observation_ingestion_server] Persisted sensor snapshot (t=0.00d, depths=6)
+2025-10-31 18:58:41 [INFO] [FDMServer] [fdm_server] Interrupt received; shutting down
+2025-10-31 18:58:41 [INFO] [ObservationIngestionServer] [observation_ingestion_server] Interrupt received; shutting down
+2025-10-31 18:58:41 [INFO] [BoundaryForcingServer] [boundary_forcing_server] Interrupt received; shutting down
+2025-10-31 18:58:41 [INFO] [RabbitMQClient] [messaging] RabbitMQ disconnected (host=localhost)
+2025-10-31 18:58:41 [INFO] [InfluxDB] [influx_utils] Closing InfluxDB client.
+2025-10-31 18:58:41 [INFO] [RabbitMQClient] [messaging] RabbitMQ disconnected (host=localhost)
+2025-10-31 18:58:41 [INFO] [InfluxDB] [influx_utils] Closing InfluxDB client.
+2025-10-31 18:58:41 [INFO] [BoundaryForcingServer] [boundary_forcing_server] Shutdown complete
+2025-10-31 18:58:41 [INFO] [RabbitMQClient] [messaging] RabbitMQ disconnected (host=localhost)
+2025-10-31 18:58:41 [INFO] [ObservationIngestionServer] [observation_ingestion_server] Shutdown complete
+2025-10-31 18:58:41 [INFO] [RabbitMQClient] [messaging] RabbitMQ disconnected (host=localhost)
+2025-10-31 18:58:41 [INFO] [RabbitMQClient] [messaging] RabbitMQ disconnected (host=localhost)
+2025-10-31 18:58:41 [INFO] [InfluxDB] [influx_utils] Closing InfluxDB client.
+2025-10-31 18:58:41 [INFO] [FDMServer] [fdm_server] Shutdown complete
+2025-10-31 20:39:19 [INFO] [ObservationIngestionServer] [observation_ingestion_server] ObservationIngestionServer configured.
+2025-10-31 20:39:19 [INFO] [ObservationIngestionServer] [observation_ingestion_server] Dependencies initialised (queue=permafrost.record.sensors.state)
+2025-10-31 20:39:19 [INFO] [ObservationIngestionServer] [observation_ingestion_server] Listening for sensor updates on permafrost.record.sensors.state
+2025-10-31 20:39:19 [INFO] [BoundaryForcingServer] [boundary_forcing_server] Configured (poll_interval=5s, queue=permafrost.record.boundary.state, synthetic=on)
+2025-10-31 20:39:19 [INFO] [BoundaryForcingServer] [boundary_forcing_server] Dependencies initialised (queue=permafrost.record.boundary.state)
+2025-10-31 20:39:19 [INFO] [BoundaryForcingServer] [boundary_forcing_server] Polling boundary data every 5s
+2025-10-31 20:39:19 [INFO] [RabbitMQClient] [messaging] RabbitMQ connected (host=localhost, queue=permafrost.record.sensors.state)
+2025-10-31 20:39:19 [INFO] [RabbitMQClient] [messaging] Started consuming queue permafrost.record.sensors.state
+2025-10-31 20:39:19 [INFO] [FDMServer] [fdm_server] Configured (inbound=permafrost.record.boundary.state, outbound=permafrost.record.fdm.state, sensors=permafrost.record.sensors.state)
+2025-10-31 20:39:19 [INFO] [RabbitMQClient] [messaging] RabbitMQ connected (host=localhost, queue=permafrost.record.boundary.state)
+2025-10-31 20:39:19 [INFO] [RabbitMQClient] [messaging] Published message to permafrost.record.boundary.state (keys=3)
+2025-10-31 20:39:19 [INFO] [BoundaryForcingServer] [boundary_forcing_server] Published boundary conditions (t=0.00d, Ts=-11.93°C) to permafrost.record.boundary.state
+2025-10-31 20:39:19 [INFO] [FDMServer] [fdm_server] Loaded sensor snapshot (t=0.00d, depths=318)
+2025-10-31 20:39:19 [INFO] [FDMServer] [fdm_server] Dependencies ready (inbound=permafrost.record.boundary.state, outbound=permafrost.record.fdm.state, sensor=permafrost.record.sensors.state)
+2025-10-31 20:39:19 [INFO] [FDMServer] [fdm_server] Listening for boundary forcing on permafrost.record.boundary.state
+2025-10-31 20:39:19 [INFO] [RabbitMQClient] [messaging] RabbitMQ connected (host=localhost, queue=permafrost.record.boundary.state)
+2025-10-31 20:39:19 [INFO] [RabbitMQClient] [messaging] Started consuming queue permafrost.record.boundary.state
+2025-10-31 20:39:19 [INFO] [RabbitMQClient] [messaging] Consumed message from permafrost.record.boundary.state (keys=3)
+2025-10-31 20:39:19 [INFO] [InfluxDB] [influx_utils] fdm_simulation write complete (t=0.00d, depths=50, min=-11.93°C, max=1.00°C, mean=-5.46°C)
+2025-10-31 20:39:19 [INFO] [FDMServer] [fdm_server] Advanced simulation step (t=0.00d, depths=50, Ts=-11.93°C)
+2025-10-31 20:39:19 [INFO] [RabbitMQClient] [messaging] RabbitMQ connected (host=localhost, queue=permafrost.record.sensors.state)
+2025-10-31 20:39:19 [INFO] [RabbitMQClient] [messaging] Published message to permafrost.record.sensors.state (keys=9)
+2025-10-31 20:39:19 [INFO] [FDMServer] [fdm_server] Published synthetic sensors (t=0.00d, depths=6) to permafrost.record.sensors.state
+2025-10-31 20:39:19 [INFO] [RabbitMQClient] [messaging] Consumed message from permafrost.record.sensors.state (keys=9)
+2025-10-31 20:39:19 [INFO] [RabbitMQClient] [messaging] RabbitMQ connected (host=localhost, queue=permafrost.record.fdm.state)
+2025-10-31 20:39:19 [INFO] [RabbitMQClient] [messaging] Published message to permafrost.record.fdm.state (keys=3)
+2025-10-31 20:39:19 [INFO] [FDMServer] [fdm_server] Announced FDM readiness (t=0.00d) to permafrost.record.fdm.state
+2025-10-31 20:39:19 [INFO] [InfluxDB] [influx_utils] sensor_temperature write complete (t=0.00d, depths=6, min=-11.93°C, max=1.00°C, mean=-5.46°C)
+2025-10-31 20:39:19 [INFO] [ObservationIngestionServer] [observation_ingestion_server] Persisted sensor snapshot (t=0.00d, depths=6)
+2025-10-31 20:39:24 [INFO] [RabbitMQClient] [messaging] Published message to permafrost.record.boundary.state (keys=3)
+2025-10-31 20:39:24 [INFO] [BoundaryForcingServer] [boundary_forcing_server] Published boundary conditions (t=0.00d, Ts=-11.93°C) to permafrost.record.boundary.state
+2025-10-31 20:39:24 [INFO] [RabbitMQClient] [messaging] Consumed message from permafrost.record.boundary.state (keys=3)
+2025-10-31 20:39:24 [INFO] [InfluxDB] [influx_utils] fdm_simulation write complete (t=0.00d, depths=50, min=-11.93°C, max=1.00°C, mean=-5.46°C)
+2025-10-31 20:39:24 [INFO] [FDMServer] [fdm_server] Advanced simulation step (t=0.00d, depths=50, Ts=-11.93°C)
+2025-10-31 20:39:24 [INFO] [RabbitMQClient] [messaging] Published message to permafrost.record.sensors.state (keys=9)
+2025-10-31 20:39:24 [INFO] [FDMServer] [fdm_server] Published synthetic sensors (t=0.00d, depths=6) to permafrost.record.sensors.state
+2025-10-31 20:39:24 [INFO] [RabbitMQClient] [messaging] Published message to permafrost.record.fdm.state (keys=3)
+2025-10-31 20:39:24 [INFO] [FDMServer] [fdm_server] Announced FDM readiness (t=0.00d) to permafrost.record.fdm.state
+2025-10-31 20:39:24 [INFO] [RabbitMQClient] [messaging] Consumed message from permafrost.record.sensors.state (keys=9)
+2025-10-31 20:39:24 [INFO] [InfluxDB] [influx_utils] sensor_temperature write complete (t=0.00d, depths=6, min=-11.93°C, max=1.00°C, mean=-5.46°C)
+2025-10-31 20:39:24 [INFO] [ObservationIngestionServer] [observation_ingestion_server] Persisted sensor snapshot (t=0.00d, depths=6)
+2025-10-31 20:39:29 [INFO] [RabbitMQClient] [messaging] Published message to permafrost.record.boundary.state (keys=3)
+2025-10-31 20:39:29 [INFO] [BoundaryForcingServer] [boundary_forcing_server] Published boundary conditions (t=0.00d, Ts=-11.93°C) to permafrost.record.boundary.state
+2025-10-31 20:39:29 [INFO] [RabbitMQClient] [messaging] Consumed message from permafrost.record.boundary.state (keys=3)
+2025-10-31 20:39:29 [INFO] [InfluxDB] [influx_utils] fdm_simulation write complete (t=0.00d, depths=50, min=-11.93°C, max=1.00°C, mean=-5.46°C)
+2025-10-31 20:39:29 [INFO] [FDMServer] [fdm_server] Advanced simulation step (t=0.00d, depths=50, Ts=-11.93°C)
+2025-10-31 20:39:29 [INFO] [RabbitMQClient] [messaging] Published message to permafrost.record.sensors.state (keys=9)
+2025-10-31 20:39:29 [INFO] [FDMServer] [fdm_server] Published synthetic sensors (t=0.00d, depths=6) to permafrost.record.sensors.state
+2025-10-31 20:39:29 [INFO] [RabbitMQClient] [messaging] Published message to permafrost.record.fdm.state (keys=3)
+2025-10-31 20:39:29 [INFO] [FDMServer] [fdm_server] Announced FDM readiness (t=0.00d) to permafrost.record.fdm.state
+2025-10-31 20:39:29 [INFO] [RabbitMQClient] [messaging] Consumed message from permafrost.record.sensors.state (keys=9)
+2025-10-31 20:39:29 [INFO] [InfluxDB] [influx_utils] sensor_temperature write complete (t=0.00d, depths=6, min=-11.93°C, max=1.00°C, mean=-5.46°C)
+2025-10-31 20:39:29 [INFO] [ObservationIngestionServer] [observation_ingestion_server] Persisted sensor snapshot (t=0.00d, depths=6)
+2025-10-31 20:39:32 [INFO] [FDMServer] [fdm_server] Interrupt received; shutting down
+2025-10-31 20:39:32 [INFO] [ObservationIngestionServer] [observation_ingestion_server] Interrupt received; shutting down
+2025-10-31 20:39:32 [INFO] [BoundaryForcingServer] [boundary_forcing_server] Interrupt received; shutting down
+2025-10-31 20:39:32 [INFO] [RabbitMQClient] [messaging] RabbitMQ disconnected (host=localhost)
+2025-10-31 20:39:32 [INFO] [InfluxDB] [influx_utils] Closing InfluxDB client.
+2025-10-31 20:39:32 [INFO] [RabbitMQClient] [messaging] RabbitMQ disconnected (host=localhost)
+2025-10-31 20:39:32 [INFO] [RabbitMQClient] [messaging] RabbitMQ disconnected (host=localhost)
+2025-10-31 20:39:32 [INFO] [InfluxDB] [influx_utils] Closing InfluxDB client.
+2025-10-31 20:39:32 [INFO] [BoundaryForcingServer] [boundary_forcing_server] Shutdown complete
+2025-10-31 20:39:32 [INFO] [RabbitMQClient] [messaging] RabbitMQ disconnected (host=localhost)
+2025-10-31 20:39:32 [INFO] [ObservationIngestionServer] [observation_ingestion_server] Shutdown complete
+2025-10-31 20:39:32 [INFO] [RabbitMQClient] [messaging] RabbitMQ disconnected (host=localhost)
+2025-10-31 20:39:32 [INFO] [InfluxDB] [influx_utils] Closing InfluxDB client.
+2025-10-31 20:39:32 [INFO] [FDMServer] [fdm_server] Shutdown complete
+2025-10-31 20:51:00 [INFO] [ObservationIngestionServer] [observation_ingestion_server] ObservationIngestionServer configured.
+2025-10-31 20:51:00 [INFO] [ObservationIngestionServer] [observation_ingestion_server] Dependencies initialised (queue=permafrost.record.sensors.state)
+2025-10-31 20:51:00 [INFO] [ObservationIngestionServer] [observation_ingestion_server] Listening for sensor updates on permafrost.record.sensors.state
+2025-10-31 20:51:00 [INFO] [BoundaryForcingServer] [boundary_forcing_server] Configured (poll_interval=5s, synthetic=on)
+2025-10-31 20:51:00 [INFO] [BoundaryForcingServer] [boundary_forcing_server] Dependencies initialised (queue=permafrost.record.boundary.state)
+2025-10-31 20:51:00 [INFO] [BoundaryForcingServer] [boundary_forcing_server] Polling boundary data every 5s
+2025-10-31 20:51:00 [INFO] [FDMServer] [fdm_server] Configured (inbound=permafrost.record.boundary.state, outbound=permafrost.record.fdm.state, sensors=permafrost.record.sensors.state)
+2025-10-31 20:51:00 [INFO] [BoundaryForcingServer] [boundary_forcing_server] Published boundary conditions (t=0.00d, Ts=-11.93°C) to permafrost.record.boundary.state
+2025-10-31 20:51:00 [INFO] [FDMServer] [fdm_server] Loaded sensor snapshot (t=0.00d, depths=336)
+2025-10-31 20:51:00 [INFO] [FDMServer] [fdm_server] Dependencies ready (inbound=permafrost.record.boundary.state, outbound=permafrost.record.fdm.state, sensor=permafrost.record.sensors.state)
+2025-10-31 20:51:00 [INFO] [FDMServer] [fdm_server] Listening for boundary forcing on permafrost.record.boundary.state
+2025-10-31 20:51:00 [INFO] [InfluxDB] [influx_utils] fdm_simulation write complete (t=0.00d, depths=50, min=-11.93°C, max=1.00°C, mean=-5.46°C)
+2025-10-31 20:51:00 [INFO] [FDMServer] [fdm_server] Advanced simulation step (t=0.00d, depths=50, Ts=-11.93°C)
+2025-10-31 20:51:00 [INFO] [FDMServer] [fdm_server] Published synthetic sensors (t=0.00d, depths=6) to permafrost.record.sensors.state
+2025-10-31 20:51:00 [INFO] [FDMServer] [fdm_server] Announced FDM readiness (t=0.00d) to permafrost.record.fdm.state
+2025-10-31 20:51:00 [INFO] [InfluxDB] [influx_utils] sensor_temperature write complete (t=0.00d, depths=6, min=-11.93°C, max=1.00°C, mean=-5.46°C)
+2025-10-31 20:51:00 [INFO] [ObservationIngestionServer] [observation_ingestion_server] Persisted sensor snapshot (t=0.00d, depths=6)
+2025-10-31 20:51:05 [INFO] [FDMServer] [fdm_server] Advanced simulation step (t=0.00d, depths=50, Ts=-11.93°C)
+2025-10-31 20:51:10 [INFO] [FDMServer] [fdm_server] Advanced simulation step (t=0.00d, depths=50, Ts=-11.93°C)
+2025-10-31 20:51:15 [INFO] [FDMServer] [fdm_server] Advanced simulation step (t=0.00d, depths=50, Ts=-11.93°C)
+2025-10-31 20:51:20 [INFO] [FDMServer] [fdm_server] Advanced simulation step (t=0.00d, depths=50, Ts=-11.93°C)
+2025-10-31 20:51:25 [INFO] [FDMServer] [fdm_server] Advanced simulation step (t=0.00d, depths=50, Ts=-11.93°C)
+2025-10-31 20:51:30 [INFO] [FDMServer] [fdm_server] Advanced simulation step (t=0.00d, depths=50, Ts=-11.93°C)
+2025-10-31 20:51:32 [INFO] [FDMServer] [fdm_server] Interrupt received; shutting down
+2025-10-31 20:51:32 [INFO] [BoundaryForcingServer] [boundary_forcing_server] Interrupt received; shutting down
+2025-10-31 20:51:32 [INFO] [ObservationIngestionServer] [observation_ingestion_server] Interrupt received; shutting down
+2025-10-31 20:51:32 [INFO] [InfluxDB] [influx_utils] Closing InfluxDB client.
+2025-10-31 20:51:32 [INFO] [InfluxDB] [influx_utils] Closing InfluxDB client.
+2025-10-31 20:51:32 [INFO] [BoundaryForcingServer] [boundary_forcing_server] Shutdown complete
+2025-10-31 20:51:32 [INFO] [ObservationIngestionServer] [observation_ingestion_server] Shutdown complete
+2025-10-31 20:51:32 [INFO] [InfluxDB] [influx_utils] Closing InfluxDB client.
+2025-10-31 20:51:32 [INFO] [FDMServer] [fdm_server] Shutdown complete
+2025-10-31 21:10:11.%f INFO ObservationIngestionServer : ObservationIngestionServer configured.
+2025-10-31 21:10:11.%f INFO ObservationIngestionServer : Dependencies initialised (queue=permafrost.record.sensors.state)
+2025-10-31 21:10:11.%f INFO ObservationIngestionServer : Listening for sensor updates on permafrost.record.sensors.state
+2025-10-31 21:10:11.%f INFO BoundaryForcingServer : Configured (poll_interval=5s, synthetic=on)
+2025-10-31 21:10:11.%f ERROR pika.connection : Connection closed while authenticating indicating a probable authentication error
+2025-10-31 21:10:11.%f INFO BoundaryForcingServer : Dependencies initialised (queue=permafrost.record.boundary.state)
+2025-10-31 21:10:11.%f ERROR pika.adapters.utils.connection_workflow : AMQPConnector - reporting failure: AMQPConnectorAMQPHandshakeError: ProbableAuthenticationError: Client was disconnected at a connection stage indicating a probable authentication error: ("ConnectionClosedByBroker: (403) 'ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN. For details see the broker logfile.'",)
+2025-10-31 21:10:11.%f INFO BoundaryForcingServer : Polling boundary data every 5s
+2025-10-31 21:10:11.%f ERROR pika.connection : Connection closed while authenticating indicating a probable authentication error
+2025-10-31 21:10:11.%f ERROR pika.adapters.utils.connection_workflow : AMQPConnector - reporting failure: AMQPConnectorAMQPHandshakeError: ProbableAuthenticationError: Client was disconnected at a connection stage indicating a probable authentication error: ("ConnectionClosedByBroker: (403) 'ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN. For details see the broker logfile.'",)
+2025-10-31 21:10:11.%f ERROR pika.adapters.utils.connection_workflow : AMQP connection workflow failed: AMQPConnectionWorkflowFailed: 2 exceptions in all; last exception - AMQPConnectorAMQPHandshakeError: ProbableAuthenticationError: Client was disconnected at a connection stage indicating a probable authentication error: ("ConnectionClosedByBroker: (403) 'ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN. For details see the broker logfile.'",); first exception - AMQPConnectorAMQPHandshakeError: ProbableAuthenticationError: Client was disconnected at a connection stage indicating a probable authentication error: ("ConnectionClosedByBroker: (403) 'ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN. For details see the broker logfile.'",).
+2025-10-31 21:10:11.%f ERROR pika.adapters.utils.connection_workflow : AMQPConnectionWorkflow - reporting failure: AMQPConnectionWorkflowFailed: 2 exceptions in all; last exception - AMQPConnectorAMQPHandshakeError: ProbableAuthenticationError: Client was disconnected at a connection stage indicating a probable authentication error: ("ConnectionClosedByBroker: (403) 'ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN. For details see the broker logfile.'",); first exception - AMQPConnectorAMQPHandshakeError: ProbableAuthenticationError: Client was disconnected at a connection stage indicating a probable authentication error: ("ConnectionClosedByBroker: (403) 'ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN. For details see the broker logfile.'",)
+2025-10-31 21:10:11.%f ERROR pika.adapters.blocking_connection : Connection workflow failed: AMQPConnectionWorkflowFailed: 2 exceptions in all; last exception - AMQPConnectorAMQPHandshakeError: ProbableAuthenticationError: Client was disconnected at a connection stage indicating a probable authentication error: ("ConnectionClosedByBroker: (403) 'ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN. For details see the broker logfile.'",); first exception - AMQPConnectorAMQPHandshakeError: ProbableAuthenticationError: Client was disconnected at a connection stage indicating a probable authentication error: ("ConnectionClosedByBroker: (403) 'ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN. For details see the broker logfile.'",)
+2025-10-31 21:10:11.%f INFO FDMServer : Configured (inbound=permafrost.record.boundary.state, outbound=permafrost.record.fdm.state, sensors=permafrost.record.sensors.state)
+2025-10-31 21:10:11.%f ERROR pika.adapters.blocking_connection : Error in _create_connection().
+Traceback (most recent call last):
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/pika/adapters/blocking_connection.py", line 451, in _create_connection
+    raise self._reap_last_connection_workflow_error(error)
+pika.exceptions.ProbableAuthenticationError: ConnectionClosedByBroker: (403) 'ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN. For details see the broker logfile.'
+2025-10-31 21:10:11.%f ERROR RabbitMQClient : Connection error: ConnectionClosedByBroker: (403) 'ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN. For details see the broker logfile.'
+2025-10-31 21:10:11.%f INFO InfluxDB : Closing InfluxDB client.
+2025-10-31 21:10:11.%f INFO ObservationIngestionServer : Shutdown complete
+2025-10-31 21:10:11.%f WARNING FDMServer : Falling back to linear profile (reason=(401)
+Reason: Unauthorized
+HTTP response headers: HTTPHeaderDict({'Content-Type': 'application/json; charset=utf-8', 'X-Platform-Error-Code': 'unauthorized', 'Date': 'Fri, 31 Oct 2025 20:10:11 GMT', 'Content-Length': '62'})
+HTTP response body: {
+	"code": "unauthorized",
+	"message": "unauthorized access"
+}
+)
+2025-10-31 21:10:11.%f INFO FDMServer : Initialised fallback profile (Ts0=-11.93°C, depths=50)
+2025-10-31 21:10:11.%f INFO FDMServer : Dependencies ready (inbound=permafrost.record.boundary.state, outbound=permafrost.record.fdm.state, sensor=permafrost.record.sensors.state)
+2025-10-31 21:10:11.%f INFO FDMServer : Listening for boundary forcing on permafrost.record.boundary.state
+2025-10-31 21:10:11.%f ERROR BoundaryForcingServer : Boundary forcing computation failed: (401)
+Reason: Unauthorized
+HTTP response headers: HTTPHeaderDict({'Content-Type': 'application/json; charset=utf-8', 'X-Platform-Error-Code': 'unauthorized', 'Date': 'Fri, 31 Oct 2025 20:10:11 GMT', 'Content-Length': '62'})
+HTTP response body: {
+	"code": "unauthorized",
+	"message": "unauthorized access"
+}
+Traceback (most recent call last):
+  File "/home/adil/permafrost_DT/software/digital_twin/monitoring/boundary_forcing/boundary_forcing_server.py", line 184, in start
+    self.run_once()
+    ~~~~~~~~~~~~~^^
+  File "/home/adil/permafrost_DT/software/digital_twin/monitoring/boundary_forcing/boundary_forcing_server.py", line 153, in run_once
+    dataframe = self.influx.query_temperature(limit=200)
+  File "/home/adil/permafrost_DT/software/digital_twin/data_access/influx_utils.py", line 84, in query_temperature
+    tables = self.query_api.query_data_frame(query)
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/client/query_api.py", line 259, in query_data_frame
+    _generator = self.query_data_frame_stream(query, org=org, data_frame_index=data_frame_index, params=params,
+                                              use_extension_dtypes=use_extension_dtypes)
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/client/query_api.py", line 299, in query_data_frame_stream
+    response = self._query_api.post_query(org=org, query=self._create_query(query, self.default_dialect, params,
+                                                                            dataframe_query=True),
+                                          async_req=False, _preload_content=False, _return_http_data_only=False)
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/service/query_service.py", line 285, in post_query
+    (data) = self.post_query_with_http_info(**kwargs)  # noqa: E501
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/service/query_service.py", line 311, in post_query_with_http_info
+    return self.api_client.call_api(
+           ~~~~~~~~~~~~~~~~~~~~~~~~^
+        '/api/v2/query', 'POST',
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<12 lines>...
+        collection_formats={},
+        ^^^^^^^^^^^^^^^^^^^^^^
+        urlopen_kw=kwargs.get('urlopen_kw', None))
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/_sync/api_client.py", line 343, in call_api
+    return self.__call_api(resource_path, method,
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+                           path_params, query_params, header_params,
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+                           _return_http_data_only, collection_formats,
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                           _preload_content, _request_timeout, urlopen_kw)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/_sync/api_client.py", line 121, in __call_api
+    self._signin(resource_path=resource_path)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/_sync/api_client.py", line 657, in _signin
+    http_info = SigninService(self).post_signin_with_http_info()
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/service/signin_service.py", line 74, in post_signin_with_http_info
+    return self.api_client.call_api(
+           ~~~~~~~~~~~~~~~~~~~~~~~~^
+        '/api/v2/signin', 'POST',
+        ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<12 lines>...
+        collection_formats={},
+        ^^^^^^^^^^^^^^^^^^^^^^
+        urlopen_kw=kwargs.get('urlopen_kw', None))
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/_sync/api_client.py", line 343, in call_api
+    return self.__call_api(resource_path, method,
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+                           path_params, query_params, header_params,
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+                           _return_http_data_only, collection_formats,
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                           _preload_content, _request_timeout, urlopen_kw)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/_sync/api_client.py", line 173, in __call_api
+    response_data = self.request(
+        method, url, query_params=query_params, headers=header_params,
+        post_params=post_params, body=body,
+        _preload_content=_preload_content,
+        _request_timeout=_request_timeout, **urlopen_kw)
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/_sync/api_client.py", line 388, in request
+    return self.rest_client.POST(url,
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^
+                                 query_params=query_params,
+                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+                                 body=body,
+                                 ^^^^^^^^^^
+                                 **urlopen_kw)
+                                 ^^^^^^^^^^^^^
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/_sync/rest.py", line 311, in POST
+    return self.request("POST", url,
+           ~~~~~~~~~~~~^^^^^^^^^^^^^
+                        headers=headers,
+                        ^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+                        body=body,
+                        ^^^^^^^^^^
+                        **urlopen_kw)
+                        ^^^^^^^^^^^^^
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/_sync/rest.py", line 261, in request
+    raise ApiException(http_resp=r)
+influxdb_client.rest.ApiException: (401)
+Reason: Unauthorized
+HTTP response headers: HTTPHeaderDict({'Content-Type': 'application/json; charset=utf-8', 'X-Platform-Error-Code': 'unauthorized', 'Date': 'Fri, 31 Oct 2025 20:10:11 GMT', 'Content-Length': '62'})
+HTTP response body: {
+	"code": "unauthorized",
+	"message": "unauthorized access"
+}
+
+2025-10-31 21:10:11.%f ERROR pika.connection : Connection closed while authenticating indicating a probable authentication error
+2025-10-31 21:10:11.%f ERROR pika.adapters.utils.connection_workflow : AMQPConnector - reporting failure: AMQPConnectorAMQPHandshakeError: ProbableAuthenticationError: Client was disconnected at a connection stage indicating a probable authentication error: ("ConnectionClosedByBroker: (403) 'ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN. For details see the broker logfile.'",)
+2025-10-31 21:10:11.%f ERROR pika.connection : Connection closed while authenticating indicating a probable authentication error
+2025-10-31 21:10:11.%f ERROR pika.adapters.utils.connection_workflow : AMQPConnector - reporting failure: AMQPConnectorAMQPHandshakeError: ProbableAuthenticationError: Client was disconnected at a connection stage indicating a probable authentication error: ("ConnectionClosedByBroker: (403) 'ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN. For details see the broker logfile.'",)
+2025-10-31 21:10:11.%f ERROR pika.adapters.utils.connection_workflow : AMQP connection workflow failed: AMQPConnectionWorkflowFailed: 2 exceptions in all; last exception - AMQPConnectorAMQPHandshakeError: ProbableAuthenticationError: Client was disconnected at a connection stage indicating a probable authentication error: ("ConnectionClosedByBroker: (403) 'ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN. For details see the broker logfile.'",); first exception - AMQPConnectorAMQPHandshakeError: ProbableAuthenticationError: Client was disconnected at a connection stage indicating a probable authentication error: ("ConnectionClosedByBroker: (403) 'ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN. For details see the broker logfile.'",).
+2025-10-31 21:10:11.%f ERROR pika.adapters.utils.connection_workflow : AMQPConnectionWorkflow - reporting failure: AMQPConnectionWorkflowFailed: 2 exceptions in all; last exception - AMQPConnectorAMQPHandshakeError: ProbableAuthenticationError: Client was disconnected at a connection stage indicating a probable authentication error: ("ConnectionClosedByBroker: (403) 'ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN. For details see the broker logfile.'",); first exception - AMQPConnectorAMQPHandshakeError: ProbableAuthenticationError: Client was disconnected at a connection stage indicating a probable authentication error: ("ConnectionClosedByBroker: (403) 'ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN. For details see the broker logfile.'",)
+2025-10-31 21:10:11.%f ERROR pika.adapters.blocking_connection : Connection workflow failed: AMQPConnectionWorkflowFailed: 2 exceptions in all; last exception - AMQPConnectorAMQPHandshakeError: ProbableAuthenticationError: Client was disconnected at a connection stage indicating a probable authentication error: ("ConnectionClosedByBroker: (403) 'ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN. For details see the broker logfile.'",); first exception - AMQPConnectorAMQPHandshakeError: ProbableAuthenticationError: Client was disconnected at a connection stage indicating a probable authentication error: ("ConnectionClosedByBroker: (403) 'ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN. For details see the broker logfile.'",)
+2025-10-31 21:10:11.%f ERROR pika.adapters.blocking_connection : Error in _create_connection().
+Traceback (most recent call last):
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/pika/adapters/blocking_connection.py", line 451, in _create_connection
+    raise self._reap_last_connection_workflow_error(error)
+pika.exceptions.ProbableAuthenticationError: ConnectionClosedByBroker: (403) 'ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN. For details see the broker logfile.'
+2025-10-31 21:10:11.%f ERROR RabbitMQClient : Connection error: ConnectionClosedByBroker: (403) 'ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN. For details see the broker logfile.'
+2025-10-31 21:10:11.%f INFO InfluxDB : Closing InfluxDB client.
+2025-10-31 21:10:11.%f INFO FDMServer : Shutdown complete
+2025-10-31 21:10:16.%f ERROR BoundaryForcingServer : Boundary forcing computation failed: (401)
+Reason: Unauthorized
+HTTP response headers: HTTPHeaderDict({'Content-Type': 'application/json; charset=utf-8', 'X-Platform-Error-Code': 'unauthorized', 'Date': 'Fri, 31 Oct 2025 20:10:16 GMT', 'Content-Length': '62'})
+HTTP response body: {
+	"code": "unauthorized",
+	"message": "unauthorized access"
+}
+Traceback (most recent call last):
+  File "/home/adil/permafrost_DT/software/digital_twin/monitoring/boundary_forcing/boundary_forcing_server.py", line 184, in start
+    self.run_once()
+    ~~~~~~~~~~~~~^^
+  File "/home/adil/permafrost_DT/software/digital_twin/monitoring/boundary_forcing/boundary_forcing_server.py", line 153, in run_once
+    dataframe = self.influx.query_temperature(limit=200)
+  File "/home/adil/permafrost_DT/software/digital_twin/data_access/influx_utils.py", line 84, in query_temperature
+    tables = self.query_api.query_data_frame(query)
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/client/query_api.py", line 259, in query_data_frame
+    _generator = self.query_data_frame_stream(query, org=org, data_frame_index=data_frame_index, params=params,
+                                              use_extension_dtypes=use_extension_dtypes)
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/client/query_api.py", line 299, in query_data_frame_stream
+    response = self._query_api.post_query(org=org, query=self._create_query(query, self.default_dialect, params,
+                                                                            dataframe_query=True),
+                                          async_req=False, _preload_content=False, _return_http_data_only=False)
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/service/query_service.py", line 285, in post_query
+    (data) = self.post_query_with_http_info(**kwargs)  # noqa: E501
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/service/query_service.py", line 311, in post_query_with_http_info
+    return self.api_client.call_api(
+           ~~~~~~~~~~~~~~~~~~~~~~~~^
+        '/api/v2/query', 'POST',
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<12 lines>...
+        collection_formats={},
+        ^^^^^^^^^^^^^^^^^^^^^^
+        urlopen_kw=kwargs.get('urlopen_kw', None))
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/_sync/api_client.py", line 343, in call_api
+    return self.__call_api(resource_path, method,
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+                           path_params, query_params, header_params,
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+                           _return_http_data_only, collection_formats,
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                           _preload_content, _request_timeout, urlopen_kw)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/_sync/api_client.py", line 121, in __call_api
+    self._signin(resource_path=resource_path)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/_sync/api_client.py", line 657, in _signin
+    http_info = SigninService(self).post_signin_with_http_info()
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/service/signin_service.py", line 74, in post_signin_with_http_info
+    return self.api_client.call_api(
+           ~~~~~~~~~~~~~~~~~~~~~~~~^
+        '/api/v2/signin', 'POST',
+        ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<12 lines>...
+        collection_formats={},
+        ^^^^^^^^^^^^^^^^^^^^^^
+        urlopen_kw=kwargs.get('urlopen_kw', None))
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/_sync/api_client.py", line 343, in call_api
+    return self.__call_api(resource_path, method,
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+                           path_params, query_params, header_params,
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+                           _return_http_data_only, collection_formats,
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                           _preload_content, _request_timeout, urlopen_kw)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/_sync/api_client.py", line 173, in __call_api
+    response_data = self.request(
+        method, url, query_params=query_params, headers=header_params,
+        post_params=post_params, body=body,
+        _preload_content=_preload_content,
+        _request_timeout=_request_timeout, **urlopen_kw)
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/_sync/api_client.py", line 388, in request
+    return self.rest_client.POST(url,
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^
+                                 query_params=query_params,
+                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+                                 body=body,
+                                 ^^^^^^^^^^
+                                 **urlopen_kw)
+                                 ^^^^^^^^^^^^^
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/_sync/rest.py", line 311, in POST
+    return self.request("POST", url,
+           ~~~~~~~~~~~~^^^^^^^^^^^^^
+                        headers=headers,
+                        ^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+                        body=body,
+                        ^^^^^^^^^^
+                        **urlopen_kw)
+                        ^^^^^^^^^^^^^
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/_sync/rest.py", line 261, in request
+    raise ApiException(http_resp=r)
+influxdb_client.rest.ApiException: (401)
+Reason: Unauthorized
+HTTP response headers: HTTPHeaderDict({'Content-Type': 'application/json; charset=utf-8', 'X-Platform-Error-Code': 'unauthorized', 'Date': 'Fri, 31 Oct 2025 20:10:16 GMT', 'Content-Length': '62'})
+HTTP response body: {
+	"code": "unauthorized",
+	"message": "unauthorized access"
+}
+
+2025-10-31 21:10:19.%f INFO BoundaryForcingServer : Interrupt received; shutting down
+2025-10-31 21:10:19.%f INFO InfluxDB : Closing InfluxDB client.
+2025-10-31 21:10:19.%f INFO BoundaryForcingServer : Shutdown complete
+2025-10-31 21:14:29.%f INFO ObservationIngestionServer : ObservationIngestionServer configured.
+2025-10-31 21:14:29.%f INFO ObservationIngestionServer : Dependencies initialised (queue=permafrost.record.sensors.state)
+2025-10-31 21:14:29.%f INFO ObservationIngestionServer : Listening for sensor updates on permafrost.record.sensors.state
+2025-10-31 21:14:29.%f INFO BoundaryForcingServer : Configured (poll_interval=5s, synthetic=on)
+2025-10-31 21:14:29.%f ERROR pika.connection : Connection closed while authenticating indicating a probable authentication error
+2025-10-31 21:14:29.%f ERROR pika.adapters.utils.connection_workflow : AMQPConnector - reporting failure: AMQPConnectorAMQPHandshakeError: ProbableAuthenticationError: Client was disconnected at a connection stage indicating a probable authentication error: ("ConnectionClosedByBroker: (403) 'ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN. For details see the broker logfile.'",)
+2025-10-31 21:14:29.%f INFO BoundaryForcingServer : Dependencies initialised (queue=permafrost.record.boundary.state)
+2025-10-31 21:14:29.%f INFO BoundaryForcingServer : Polling boundary data every 5s
+2025-10-31 21:14:29.%f ERROR pika.connection : Connection closed while authenticating indicating a probable authentication error
+2025-10-31 21:14:29.%f ERROR pika.adapters.utils.connection_workflow : AMQPConnector - reporting failure: AMQPConnectorAMQPHandshakeError: ProbableAuthenticationError: Client was disconnected at a connection stage indicating a probable authentication error: ("ConnectionClosedByBroker: (403) 'ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN. For details see the broker logfile.'",)
+2025-10-31 21:14:29.%f ERROR pika.adapters.utils.connection_workflow : AMQP connection workflow failed: AMQPConnectionWorkflowFailed: 2 exceptions in all; last exception - AMQPConnectorAMQPHandshakeError: ProbableAuthenticationError: Client was disconnected at a connection stage indicating a probable authentication error: ("ConnectionClosedByBroker: (403) 'ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN. For details see the broker logfile.'",); first exception - AMQPConnectorAMQPHandshakeError: ProbableAuthenticationError: Client was disconnected at a connection stage indicating a probable authentication error: ("ConnectionClosedByBroker: (403) 'ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN. For details see the broker logfile.'",).
+2025-10-31 21:14:29.%f ERROR pika.adapters.utils.connection_workflow : AMQPConnectionWorkflow - reporting failure: AMQPConnectionWorkflowFailed: 2 exceptions in all; last exception - AMQPConnectorAMQPHandshakeError: ProbableAuthenticationError: Client was disconnected at a connection stage indicating a probable authentication error: ("ConnectionClosedByBroker: (403) 'ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN. For details see the broker logfile.'",); first exception - AMQPConnectorAMQPHandshakeError: ProbableAuthenticationError: Client was disconnected at a connection stage indicating a probable authentication error: ("ConnectionClosedByBroker: (403) 'ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN. For details see the broker logfile.'",)
+2025-10-31 21:14:29.%f ERROR pika.adapters.blocking_connection : Connection workflow failed: AMQPConnectionWorkflowFailed: 2 exceptions in all; last exception - AMQPConnectorAMQPHandshakeError: ProbableAuthenticationError: Client was disconnected at a connection stage indicating a probable authentication error: ("ConnectionClosedByBroker: (403) 'ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN. For details see the broker logfile.'",); first exception - AMQPConnectorAMQPHandshakeError: ProbableAuthenticationError: Client was disconnected at a connection stage indicating a probable authentication error: ("ConnectionClosedByBroker: (403) 'ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN. For details see the broker logfile.'",)
+2025-10-31 21:14:29.%f ERROR pika.adapters.blocking_connection : Error in _create_connection().
+Traceback (most recent call last):
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/pika/adapters/blocking_connection.py", line 451, in _create_connection
+    raise self._reap_last_connection_workflow_error(error)
+pika.exceptions.ProbableAuthenticationError: ConnectionClosedByBroker: (403) 'ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN. For details see the broker logfile.'
+2025-10-31 21:14:29.%f ERROR RabbitMQClient : Connection error: ConnectionClosedByBroker: (403) 'ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN. For details see the broker logfile.'
+2025-10-31 21:14:29.%f INFO InfluxDB : Closing InfluxDB client.
+2025-10-31 21:14:29.%f INFO ObservationIngestionServer : Shutdown complete
+2025-10-31 21:14:29.%f INFO FDMServer : Configured (inbound=permafrost.record.boundary.state, outbound=permafrost.record.fdm.state, sensors=permafrost.record.sensors.state)
+2025-10-31 21:14:29.%f ERROR BoundaryForcingServer : Boundary forcing computation failed: (401)
+Reason: Unauthorized
+HTTP response headers: HTTPHeaderDict({'Content-Type': 'application/json; charset=utf-8', 'X-Platform-Error-Code': 'unauthorized', 'Date': 'Fri, 31 Oct 2025 20:14:29 GMT', 'Content-Length': '62'})
+HTTP response body: {
+	"code": "unauthorized",
+	"message": "unauthorized access"
+}
+Traceback (most recent call last):
+  File "/home/adil/permafrost_DT/software/digital_twin/monitoring/boundary_forcing/boundary_forcing_server.py", line 184, in start
+    self.run_once()
+    ~~~~~~~~~~~~~^^
+  File "/home/adil/permafrost_DT/software/digital_twin/monitoring/boundary_forcing/boundary_forcing_server.py", line 153, in run_once
+    dataframe = self.influx.query_temperature(limit=200)
+  File "/home/adil/permafrost_DT/software/digital_twin/data_access/influx_utils.py", line 84, in query_temperature
+    tables = self.query_api.query_data_frame(query)
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/client/query_api.py", line 259, in query_data_frame
+    _generator = self.query_data_frame_stream(query, org=org, data_frame_index=data_frame_index, params=params,
+                                              use_extension_dtypes=use_extension_dtypes)
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/client/query_api.py", line 299, in query_data_frame_stream
+    response = self._query_api.post_query(org=org, query=self._create_query(query, self.default_dialect, params,
+                                                                            dataframe_query=True),
+                                          async_req=False, _preload_content=False, _return_http_data_only=False)
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/service/query_service.py", line 285, in post_query
+    (data) = self.post_query_with_http_info(**kwargs)  # noqa: E501
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/service/query_service.py", line 311, in post_query_with_http_info
+    return self.api_client.call_api(
+           ~~~~~~~~~~~~~~~~~~~~~~~~^
+        '/api/v2/query', 'POST',
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<12 lines>...
+        collection_formats={},
+        ^^^^^^^^^^^^^^^^^^^^^^
+        urlopen_kw=kwargs.get('urlopen_kw', None))
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/_sync/api_client.py", line 343, in call_api
+    return self.__call_api(resource_path, method,
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+                           path_params, query_params, header_params,
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+                           _return_http_data_only, collection_formats,
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                           _preload_content, _request_timeout, urlopen_kw)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/_sync/api_client.py", line 121, in __call_api
+    self._signin(resource_path=resource_path)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/_sync/api_client.py", line 657, in _signin
+    http_info = SigninService(self).post_signin_with_http_info()
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/service/signin_service.py", line 74, in post_signin_with_http_info
+    return self.api_client.call_api(
+           ~~~~~~~~~~~~~~~~~~~~~~~~^
+        '/api/v2/signin', 'POST',
+        ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<12 lines>...
+        collection_formats={},
+        ^^^^^^^^^^^^^^^^^^^^^^
+        urlopen_kw=kwargs.get('urlopen_kw', None))
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/_sync/api_client.py", line 343, in call_api
+    return self.__call_api(resource_path, method,
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+                           path_params, query_params, header_params,
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+                           _return_http_data_only, collection_formats,
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                           _preload_content, _request_timeout, urlopen_kw)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/_sync/api_client.py", line 173, in __call_api
+    response_data = self.request(
+        method, url, query_params=query_params, headers=header_params,
+        post_params=post_params, body=body,
+        _preload_content=_preload_content,
+        _request_timeout=_request_timeout, **urlopen_kw)
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/_sync/api_client.py", line 388, in request
+    return self.rest_client.POST(url,
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^
+                                 query_params=query_params,
+                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+                                 body=body,
+                                 ^^^^^^^^^^
+                                 **urlopen_kw)
+                                 ^^^^^^^^^^^^^
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/_sync/rest.py", line 311, in POST
+    return self.request("POST", url,
+           ~~~~~~~~~~~~^^^^^^^^^^^^^
+                        headers=headers,
+                        ^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+                        body=body,
+                        ^^^^^^^^^^
+                        **urlopen_kw)
+                        ^^^^^^^^^^^^^
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/_sync/rest.py", line 261, in request
+    raise ApiException(http_resp=r)
+influxdb_client.rest.ApiException: (401)
+Reason: Unauthorized
+HTTP response headers: HTTPHeaderDict({'Content-Type': 'application/json; charset=utf-8', 'X-Platform-Error-Code': 'unauthorized', 'Date': 'Fri, 31 Oct 2025 20:14:29 GMT', 'Content-Length': '62'})
+HTTP response body: {
+	"code": "unauthorized",
+	"message": "unauthorized access"
+}
+
+2025-10-31 21:14:29.%f WARNING FDMServer : Falling back to linear profile (reason=(401)
+Reason: Unauthorized
+HTTP response headers: HTTPHeaderDict({'Content-Type': 'application/json; charset=utf-8', 'X-Platform-Error-Code': 'unauthorized', 'Date': 'Fri, 31 Oct 2025 20:14:29 GMT', 'Content-Length': '62'})
+HTTP response body: {
+	"code": "unauthorized",
+	"message": "unauthorized access"
+}
+)
+2025-10-31 21:14:29.%f INFO FDMServer : Initialised fallback profile (Ts0=-11.93°C, depths=50)
+2025-10-31 21:14:29.%f INFO FDMServer : Dependencies ready (inbound=permafrost.record.boundary.state, outbound=permafrost.record.fdm.state, sensor=permafrost.record.sensors.state)
+2025-10-31 21:14:29.%f INFO FDMServer : Listening for boundary forcing on permafrost.record.boundary.state
+2025-10-31 21:14:29.%f ERROR pika.connection : Connection closed while authenticating indicating a probable authentication error
+2025-10-31 21:14:29.%f ERROR pika.adapters.utils.connection_workflow : AMQPConnector - reporting failure: AMQPConnectorAMQPHandshakeError: ProbableAuthenticationError: Client was disconnected at a connection stage indicating a probable authentication error: ("ConnectionClosedByBroker: (403) 'ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN. For details see the broker logfile.'",)
+2025-10-31 21:14:29.%f ERROR pika.connection : Connection closed while authenticating indicating a probable authentication error
+2025-10-31 21:14:29.%f ERROR pika.adapters.utils.connection_workflow : AMQPConnector - reporting failure: AMQPConnectorAMQPHandshakeError: ProbableAuthenticationError: Client was disconnected at a connection stage indicating a probable authentication error: ("ConnectionClosedByBroker: (403) 'ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN. For details see the broker logfile.'",)
+2025-10-31 21:14:29.%f ERROR pika.adapters.utils.connection_workflow : AMQP connection workflow failed: AMQPConnectionWorkflowFailed: 2 exceptions in all; last exception - AMQPConnectorAMQPHandshakeError: ProbableAuthenticationError: Client was disconnected at a connection stage indicating a probable authentication error: ("ConnectionClosedByBroker: (403) 'ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN. For details see the broker logfile.'",); first exception - AMQPConnectorAMQPHandshakeError: ProbableAuthenticationError: Client was disconnected at a connection stage indicating a probable authentication error: ("ConnectionClosedByBroker: (403) 'ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN. For details see the broker logfile.'",).
+2025-10-31 21:14:29.%f ERROR pika.adapters.utils.connection_workflow : AMQPConnectionWorkflow - reporting failure: AMQPConnectionWorkflowFailed: 2 exceptions in all; last exception - AMQPConnectorAMQPHandshakeError: ProbableAuthenticationError: Client was disconnected at a connection stage indicating a probable authentication error: ("ConnectionClosedByBroker: (403) 'ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN. For details see the broker logfile.'",); first exception - AMQPConnectorAMQPHandshakeError: ProbableAuthenticationError: Client was disconnected at a connection stage indicating a probable authentication error: ("ConnectionClosedByBroker: (403) 'ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN. For details see the broker logfile.'",)
+2025-10-31 21:14:29.%f ERROR pika.adapters.blocking_connection : Connection workflow failed: AMQPConnectionWorkflowFailed: 2 exceptions in all; last exception - AMQPConnectorAMQPHandshakeError: ProbableAuthenticationError: Client was disconnected at a connection stage indicating a probable authentication error: ("ConnectionClosedByBroker: (403) 'ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN. For details see the broker logfile.'",); first exception - AMQPConnectorAMQPHandshakeError: ProbableAuthenticationError: Client was disconnected at a connection stage indicating a probable authentication error: ("ConnectionClosedByBroker: (403) 'ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN. For details see the broker logfile.'",)
+2025-10-31 21:14:29.%f ERROR pika.adapters.blocking_connection : Error in _create_connection().
+Traceback (most recent call last):
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/pika/adapters/blocking_connection.py", line 451, in _create_connection
+    raise self._reap_last_connection_workflow_error(error)
+pika.exceptions.ProbableAuthenticationError: ConnectionClosedByBroker: (403) 'ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN. For details see the broker logfile.'
+2025-10-31 21:14:29.%f ERROR RabbitMQClient : Connection error: ConnectionClosedByBroker: (403) 'ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN. For details see the broker logfile.'
+2025-10-31 21:14:29.%f INFO InfluxDB : Closing InfluxDB client.
+2025-10-31 21:14:29.%f INFO FDMServer : Shutdown complete
+2025-10-31 21:14:34.%f ERROR BoundaryForcingServer : Boundary forcing computation failed: (401)
+Reason: Unauthorized
+HTTP response headers: HTTPHeaderDict({'Content-Type': 'application/json; charset=utf-8', 'X-Platform-Error-Code': 'unauthorized', 'Date': 'Fri, 31 Oct 2025 20:14:34 GMT', 'Content-Length': '62'})
+HTTP response body: {
+	"code": "unauthorized",
+	"message": "unauthorized access"
+}
+Traceback (most recent call last):
+  File "/home/adil/permafrost_DT/software/digital_twin/monitoring/boundary_forcing/boundary_forcing_server.py", line 184, in start
+    self.run_once()
+    ~~~~~~~~~~~~~^^
+  File "/home/adil/permafrost_DT/software/digital_twin/monitoring/boundary_forcing/boundary_forcing_server.py", line 153, in run_once
+    dataframe = self.influx.query_temperature(limit=200)
+  File "/home/adil/permafrost_DT/software/digital_twin/data_access/influx_utils.py", line 84, in query_temperature
+    tables = self.query_api.query_data_frame(query)
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/client/query_api.py", line 259, in query_data_frame
+    _generator = self.query_data_frame_stream(query, org=org, data_frame_index=data_frame_index, params=params,
+                                              use_extension_dtypes=use_extension_dtypes)
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/client/query_api.py", line 299, in query_data_frame_stream
+    response = self._query_api.post_query(org=org, query=self._create_query(query, self.default_dialect, params,
+                                                                            dataframe_query=True),
+                                          async_req=False, _preload_content=False, _return_http_data_only=False)
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/service/query_service.py", line 285, in post_query
+    (data) = self.post_query_with_http_info(**kwargs)  # noqa: E501
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/service/query_service.py", line 311, in post_query_with_http_info
+    return self.api_client.call_api(
+           ~~~~~~~~~~~~~~~~~~~~~~~~^
+        '/api/v2/query', 'POST',
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<12 lines>...
+        collection_formats={},
+        ^^^^^^^^^^^^^^^^^^^^^^
+        urlopen_kw=kwargs.get('urlopen_kw', None))
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/_sync/api_client.py", line 343, in call_api
+    return self.__call_api(resource_path, method,
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+                           path_params, query_params, header_params,
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+                           _return_http_data_only, collection_formats,
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                           _preload_content, _request_timeout, urlopen_kw)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/_sync/api_client.py", line 121, in __call_api
+    self._signin(resource_path=resource_path)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/_sync/api_client.py", line 657, in _signin
+    http_info = SigninService(self).post_signin_with_http_info()
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/service/signin_service.py", line 74, in post_signin_with_http_info
+    return self.api_client.call_api(
+           ~~~~~~~~~~~~~~~~~~~~~~~~^
+        '/api/v2/signin', 'POST',
+        ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<12 lines>...
+        collection_formats={},
+        ^^^^^^^^^^^^^^^^^^^^^^
+        urlopen_kw=kwargs.get('urlopen_kw', None))
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/_sync/api_client.py", line 343, in call_api
+    return self.__call_api(resource_path, method,
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+                           path_params, query_params, header_params,
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+                           _return_http_data_only, collection_formats,
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                           _preload_content, _request_timeout, urlopen_kw)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/_sync/api_client.py", line 173, in __call_api
+    response_data = self.request(
+        method, url, query_params=query_params, headers=header_params,
+        post_params=post_params, body=body,
+        _preload_content=_preload_content,
+        _request_timeout=_request_timeout, **urlopen_kw)
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/_sync/api_client.py", line 388, in request
+    return self.rest_client.POST(url,
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^
+                                 query_params=query_params,
+                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+                                 body=body,
+                                 ^^^^^^^^^^
+                                 **urlopen_kw)
+                                 ^^^^^^^^^^^^^
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/_sync/rest.py", line 311, in POST
+    return self.request("POST", url,
+           ~~~~~~~~~~~~^^^^^^^^^^^^^
+                        headers=headers,
+                        ^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+                        body=body,
+                        ^^^^^^^^^^
+                        **urlopen_kw)
+                        ^^^^^^^^^^^^^
+  File "/home/adil/permafrost_DT/venv/lib/python3.13/site-packages/influxdb_client/_sync/rest.py", line 261, in request
+    raise ApiException(http_resp=r)
+influxdb_client.rest.ApiException: (401)
+Reason: Unauthorized
+HTTP response headers: HTTPHeaderDict({'Content-Type': 'application/json; charset=utf-8', 'X-Platform-Error-Code': 'unauthorized', 'Date': 'Fri, 31 Oct 2025 20:14:34 GMT', 'Content-Length': '62'})
+HTTP response body: {
+	"code": "unauthorized",
+	"message": "unauthorized access"
+}
+
+2025-10-31 21:14:36.%f INFO BoundaryForcingServer : Interrupt received; shutting down
+2025-10-31 21:14:36.%f INFO InfluxDB : Closing InfluxDB client.
+2025-10-31 21:14:36.%f INFO BoundaryForcingServer : Shutdown complete

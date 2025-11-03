@@ -11,10 +11,10 @@ from typing import Optional
 import numpy as np
 import torch
 
-from software.digital_twin.communication.logger import setup_logger
 from software.digital_twin.communication.messaging import RabbitMQClient, RabbitMQConfig, resolve_queue_config
 from software.digital_twin.data_access.influx_utils import InfluxConfig, InfluxHelper
 from software.digital_twin.simulator.pinn_forward.freezing_soil_pinn import FreezingSoilPINN
+from software.utils.logging_setup import get_logger
 
 FDM_QUEUE = "permafrost.record.fdm.state"
 PINN_FORWARD_QUEUE = "permafrost.record.pinn_forward.state"
@@ -39,7 +39,7 @@ class PINNForwardServer:
         enable_training: bool = True,
         model_path: str | None = None,
     ) -> None:
-        self.logger = setup_logger("PINNForwardServer")
+        self.logger = get_logger("PINNForwardServer")
         self.influx_config = influx_config or InfluxConfig()
         self.fdm_queue_config = resolve_queue_config(
             fdm_queue_config,
@@ -80,7 +80,13 @@ class PINNForwardServer:
         device = "cuda" if torch.cuda.is_available() else "cpu"
         self.pinn = FreezingSoilPINN(self.params, device=device, log_callback=self.logger.info)
         self._load_pretrained_weights()
-        self.logger.info("PINNForwardServer configured.")
+        self.logger.info(
+            "Configured (inbound=%s, outbound=%s, training=%s, device=%s)",
+            self.fdm_queue_config.queue,
+            self.forward_queue_config.queue,
+            "on" if self.enable_training else "off",
+            self.pinn.device,
+        )
 
     def _load_pretrained_weights(self) -> None:
         """Load pretrained weights if available."""
@@ -112,19 +118,24 @@ class PINNForwardServer:
         if self.influx is None:
             raise RuntimeError("Influx helper not initialised. Did you call setup()?")
 
-        self.logger.info("Fetching FDM results from InfluxDB...")
+        self.logger.info("Querying InfluxDB for FDM simulation history")
         df = self.influx.query_model_temperature(measurement="fdm_simulation", limit=5000)
         if df is None or df.empty:
-            self.logger.error("No FDM data found in InfluxDB. Aborting training.")
+            self.logger.error("FDM history unavailable; skipping PINN update")
             return
 
-        self.logger.info("Loaded %s FDM temperature rows for PINN processing.", len(df))
+        time_steps = sorted(df["time_days"].unique())
+        self.logger.info(
+            "Fetched FDM history (rows=%d, timesteps=%d)",
+            len(df),
+            len(time_steps),
+        )
 
         status = "inferred"
         summary = None
         if self.enable_training:
             try:
-                self.logger.info("Training enabled — starting PINN optimisation.")
+                self.logger.info("Starting PINN training (epochs=%d)", TRAIN_EPOCHS)
                 summary = self.pinn.train(
                     x_domain=(0.0, 5.0), t_domain=(0.0, 365.0), epochs=TRAIN_EPOCHS, n_samples=5000
                 )
@@ -133,28 +144,28 @@ class PINNForwardServer:
                 self.pinn.model.eval()
                 status = "trained"
             except Exception as exc:
-                self.logger.error("Training failed: %s", exc, exc_info=True)
+                self.logger.error("PINN training failed: %s", exc, exc_info=True)
                 return
         else:
             if not self.model_path.exists():
                 self.logger.error(
-                    "Cannot run inference. Expected pretrained PINN at %s.", self.model_path
+                    "Cannot run inference – pretrained PINN missing at %s",
+                    self.model_path,
                 )
                 return
-            self.logger.info(
-                "Training disabled — using pretrained weights at %s.", self.model_path
-            )
+            self.logger.info("Using pretrained weights at %s", self.model_path)
             self._load_pretrained_weights()
 
-        self._write_predictions(df, status=status)
+        timestep_count = self._write_predictions(df, status=status)
         summary = self._persist_training_summary(status=status, epochs=TRAIN_EPOCHS if status == "trained" else 0, summary=summary)
-        self._publish_status(status=status, df=df, summary=summary)
+        self._publish_status(status=status, df=df, summary=summary, steps=timestep_count)
 
-    def _write_predictions(self, df, *, status: str) -> None:
+    def _write_predictions(self, df, *, status: str) -> int:
         """Generate predictions and store/publish them."""
         self.pinn.model.eval()
         x_vals = np.linspace(0, 5.0, 50)
-        for t_day in sorted(df["time_days"].unique()):
+        time_points = sorted(df["time_days"].unique())
+        for t_day in time_points:
             t_tensor = torch.full(
                 (len(x_vals), 1),
                 float(t_day),
@@ -162,22 +173,24 @@ class PINNForwardServer:
                 dtype=torch.float32,
             )
             x_tensor = torch.tensor(x_vals, device=self.pinn.device, dtype=torch.float32).unsqueeze(1)
-            T_pred = self.pinn.predict(x_tensor, t_tensor).cpu().numpy()
+            T_pred = self.pinn.predict(x_tensor, t_tensor).cpu().numpy().reshape(-1)
 
-            for depth, temp in zip(x_vals, T_pred):
-                self.influx.write_model_temperature(
-                    measurement="pinn_forward",
-                    time_days=float(t_day),
-                    depth=float(depth),
-                    temperature=float(temp),
-                    site="default",
-                    extra_tags={"model": "pinn"}
-                )
+            self.influx.write_depth_series(
+                measurement="pinn_forward",
+                time_days=float(t_day),
+                depths=x_vals.tolist(),
+                temperatures=T_pred.tolist(),
+                site="default",
+                extra_tags={"model": "pinn"},
+            )
 
-        if status == "trained":
-            self.logger.info("✅ PINN retraining and prediction complete.")
-        else:
-            self.logger.info("✅ PINN inference complete using pretrained weights.")
+        self.logger.info(
+            "PINN forward %s complete (timesteps=%d, depths=%d)",
+            "training" if status == "trained" else "inference",
+            len(time_points),
+            len(x_vals),
+        )
+        return len(time_points)
 
     def _persist_training_summary(
         self,
@@ -201,7 +214,7 @@ class PINNForwardServer:
         self.history_path.write_text(json.dumps(fallback, indent=2))
         return fallback
 
-    def _publish_status(self, *, status: str, df, summary: dict) -> None:
+    def _publish_status(self, *, status: str, df, summary: dict, steps: int) -> None:
         if self.out_publisher is None:
             return
 
@@ -212,8 +225,15 @@ class PINNForwardServer:
             "model_path": str(self.model_path),
             "history_path": str(self.history_path),
             "epochs": summary.get("epochs", 0),
+            "timesteps": steps,
         }
         self.out_publisher.publish(message)
+        self.logger.info(
+            "Published PINN status (status=%s, t=%.2fd) to %s",
+            status,
+            message["time_days"],
+            self.forward_queue_config.queue,
+        )
 
     # -------------------------------
     # QUEUE HANDLER
@@ -222,16 +242,17 @@ class PINNForwardServer:
         """
         Handles messages from RabbitMQ and triggers retraining when FDM output is ready.
         """
-        self.logger.info(f"Received message from FDM service: {msg}")
-        if msg.get("status") == "ready":
+        status_flag = msg.get("status")
+        self.logger.info("Received FDM notification (status=%s)", status_flag)
+        if status_flag == "ready":
             if self.enable_training:
-                self.logger.info("New FDM results detected — starting PINN retraining.")
+                self.logger.info("Triggering PINN retraining")
                 Thread(target=self.train_from_influx, daemon=True).start()
             else:
-                self.logger.info("New FDM results detected — running PINN inference (training disabled).")
+                self.logger.info("Training disabled; running PINN inference")
                 self.train_from_influx()
         else:
-            self.logger.warning("Message ignored (no retraining trigger).")
+            self.logger.warning("FDM notification ignored (status=%s)", status_flag)
 
     # -------------------------------
     # RUN
@@ -239,7 +260,7 @@ class PINNForwardServer:
     def run(self):
         if self.mq_client is None:
             raise RuntimeError("RabbitMQ client not initialised. Did you call setup()?")
-        self.logger.info("PINNForwardServer listening for FDM output messages...")
+        self.logger.info("Listening for FDM notifications on %s", self.fdm_queue_config.queue)
         self.mq_client.consume(callback=self._on_message)
 
     # -------------------------------
@@ -254,7 +275,11 @@ class PINNForwardServer:
             self.mq_client = RabbitMQClient(self.fdm_queue_config)
         if self.out_publisher is None:
             self.out_publisher = RabbitMQClient(self.forward_queue_config)
-        self.logger.info("PINNForwardServer setup complete.")
+        self.logger.info(
+            "Dependencies ready (inbound=%s, outbound=%s)",
+            self.fdm_queue_config.queue,
+            self.forward_queue_config.queue,
+        )
 
     def start(self) -> None:
         """Start consuming FDM notifications."""
@@ -265,7 +290,7 @@ class PINNForwardServer:
         try:
             self.run()
         except KeyboardInterrupt:  # pragma: no cover - runtime
-            self.logger.info("PINNForwardServer interrupted. Shutting down...")
+            self.logger.info("Interrupt received; shutting down")
         finally:
             self.close()
 
@@ -285,7 +310,7 @@ class PINNForwardServer:
             self.out_publisher.disconnect()
         if self.influx is not None:
             self.influx.close()
-        self.logger.info("PINNForwardServer shutdown complete.")
+        self.logger.info("Shutdown complete")
 
 
 if __name__ == "__main__":

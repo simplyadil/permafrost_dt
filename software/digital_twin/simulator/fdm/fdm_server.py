@@ -9,9 +9,9 @@ from typing import Optional
 
 import numpy as np
 
-from software.digital_twin.communication.logger import setup_logger
 from software.digital_twin.communication.messaging import RabbitMQClient, RabbitMQConfig, resolve_queue_config
 from software.digital_twin.data_access.influx_utils import InfluxConfig, InfluxHelper, _parse_depth_value
+from software.utils.logging_setup import get_logger
 
 
 @dataclass
@@ -63,7 +63,7 @@ class FDMServer:
         sensor_config: RabbitMQConfig | None = None,
         sensor_depths: tuple[int, ...] | None = None,
     ) -> None:
-        self.logger = setup_logger("FDMServer")
+        self.logger = get_logger("FDMServer")
         self.influx_config = influx_config or InfluxConfig()
 
         self.boundary_config = resolve_queue_config(
@@ -119,7 +119,14 @@ class FDMServer:
         self.bottom_bc_temp = 1.0  # °C
 
         # Initialize from an observed snapshot if available; else linear profile
-        self.logger.info("FDMServer configured.")
+        self.logger.info(
+            "Configured (inbound=%s, outbound=%s, sensors=%s)",
+            self.boundary_config.queue,
+            self.outbound_config.queue,
+            self.sensor_config.queue if self.sensor_config else "disabled",
+        )
+        self._logged_sensor_publish = False
+        self._logged_ready = False
 
     # ---------------------------
     # Physics helpers (from notebook)
@@ -180,12 +187,19 @@ class FDMServer:
                     self.T = T_interp.astype(float)
                     self.current_time_days = latest_t
                     self.theta_prev = self.unfrozen_water_content(self.T)
-                    self.logger.info("Initialized T(x) from Influx (sensor_temperature) at t=%s d.", latest_t)
+                    self.logger.info(
+                        "Loaded sensor snapshot (t=%.2fd, depths=%d)",
+                        latest_t,
+                        len(depth_values),
+                    )
                     return
                 else:
-                    self.logger.warning("Insufficient depth samples (%s) for interpolation.", len(depth_values))
-        except Exception as e:
-            self.logger.warning(f"Could not init from Influx, fallback to linear profile. Reason: {e}")
+                    self.logger.warning(
+                        "Insufficient sensor depths for interpolation (depths=%d)",
+                        len(depth_values),
+                    )
+        except Exception as exc:
+            self.logger.warning("Falling back to linear profile (reason=%s)", exc)
 
         # Fallback: linear interpolation between Ts(0) and 1°C
         Ts0 = self._sinusoid_air_temp(0.0)
@@ -193,8 +207,11 @@ class FDMServer:
         self.T = T_init.astype(float)
         self.current_time_days = 0.0
         self.theta_prev = self.unfrozen_water_content(self.T)
-        profile_debug = dict(zip(np.round(self.x, 1), np.round(self.T, 1)))
-        self.logger.info("Initialized fallback linear profile: %s", profile_debug)
+        self.logger.info(
+            "Initialised fallback profile (Ts0=%.2f°C, depths=%d)",
+            Ts0,
+            len(self.x),
+        )
 
     # same sinusoid as notebook (used only if no forcing is available)
     @staticmethod
@@ -270,16 +287,31 @@ class FDMServer:
         if self.influx is None:
             raise RuntimeError("Influx helper is not initialised. Did you call setup()?")
 
-        for depth, temp in zip(self.x, self.T):
-            self.influx.write_model_temperature(
+        if hasattr(self.influx, "write_depth_series"):
+            self.influx.write_depth_series(
                 measurement=measurement,
                 time_days=float(t_day),
-                depth=float(depth),
-                temperature=float(temp),
+                depths=self.x.tolist(),
+                temperatures=self.T.tolist(),
                 site="default",
-                extra_tags={"model": "fdm"}
+                extra_tags={"model": "fdm"},
             )
-        self.logger.info(f"Advanced FDM: Ts={self.T[0]:.2f}°C, wrote {len(self.T)} depths at t={t_day:g} d.")
+        else:  # Fallback for legacy helpers used in tests
+            for depth, temp in zip(self.x, self.T):
+                self.influx.write_model_temperature(
+                    measurement=measurement,
+                    time_days=float(t_day),
+                    depth=float(depth),
+                    temperature=float(temp),
+                    site="default",
+                    extra_tags={"model": "fdm"},
+                )
+        self.logger.info(
+            "Advanced simulation step (t=%.2fd, depths=%d, Ts=%.2f°C)",
+            float(t_day),
+            len(self.T),
+            float(self.T[0]),
+        )
 
     def _publish_sensor_observation(self, t_day: float) -> None:
         """
@@ -292,7 +324,7 @@ class FDMServer:
         max_depth = float(self.x[-1])
         if any(depth < min_depth or depth > max_depth for depth in self.sensor_depths):
             self.logger.warning(
-                "Skipping synthetic sensor publish. Depths %s exceed grid bounds %.2f-%.2f m.",
+                "Skipped synthetic sensor publish (depths=%s outside %.2f-%.2f m)",
                 self.sensor_depths,
                 min_depth,
                 max_depth,
@@ -312,9 +344,18 @@ class FDMServer:
 
         try:
             self.mq_sensor.publish(msg)
-            self.logger.info("Published synthetic sensor message at t=%s d.", t_day)
+            if not getattr(self, "_logged_sensor_publish", False):
+                sensor_cfg = getattr(self, "sensor_config", None)
+                target_queue = sensor_cfg.queue if sensor_cfg and hasattr(sensor_cfg, "queue") else SENSOR_QUEUE
+                self.logger.info(
+                    "Published synthetic sensors (t=%.2fd, depths=%d) to %s",
+                    float(t_day),
+                    len(self.sensor_depths),
+                    target_queue,
+                )
+                self._logged_sensor_publish = True
         except Exception as exc:  # pragma: no cover - depends on broker availability
-            self.logger.error("Failed to publish synthetic sensor message: %s", exc)
+            self.logger.error("Failed to publish synthetic sensors: %s", exc, exc_info=True)
 
     def _notify_ready(self, t_day: float):
         msg = {
@@ -325,6 +366,15 @@ class FDMServer:
         if self.mq_out is None:
             raise RuntimeError("Outbound MQ client not initialised. Did you call setup()?")
         self.mq_out.publish(msg)
+        if not getattr(self, "_logged_ready", False):
+            outbound_cfg = getattr(self, "outbound_config", None)
+            queue_name = outbound_cfg.queue if outbound_cfg and hasattr(outbound_cfg, "queue") else "unknown"
+            self.logger.info(
+                "Announced FDM readiness (t=%.2fd) to %s",
+                float(t_day),
+                queue_name,
+            )
+            self._logged_ready = True
 
     # ---------------------------
     # Message handling
@@ -336,8 +386,8 @@ class FDMServer:
         try:
             t_new: float = float(msg["time_days"])
             Ts_new: float = float(msg["Ts"])
-        except Exception as e:
-            self.logger.error(f"Malformed message, missing fields: {e}")
+        except Exception as exc:
+            self.logger.error("Malformed boundary forcing message: %s", exc)
             return
 
         if self.current_time_days is None:
@@ -364,7 +414,7 @@ class FDMServer:
     def run(self):
         if self.mq_in is None:
             raise RuntimeError("Inbound MQ client not initialised. Did you call setup()?")
-        self.logger.info("FDMServer is now consuming boundary forcing...")
+        self.logger.info("Listening for boundary forcing on %s", self.boundary_config.queue)
         self.mq_in.consume(callback=self._on_boundary_forcing)
 
     # ---------------------------
@@ -382,7 +432,14 @@ class FDMServer:
         if self.sensor_config is not None and self.mq_sensor is None:
             self.mq_sensor = RabbitMQClient(self.sensor_config)
         self._initialize_state()
-        self.logger.info("FDMServer setup complete.")
+        sensor_cfg = getattr(self, "sensor_config", None)
+        sensor_state = sensor_cfg.queue if sensor_cfg and hasattr(sensor_cfg, "queue") else "disabled"
+        self.logger.info(
+            "Dependencies ready (inbound=%s, outbound=%s, sensor=%s)",
+            self.boundary_config.queue,
+            self.outbound_config.queue,
+            sensor_state,
+        )
 
     def start(self) -> None:
         """Start consuming boundary forcing messages."""
@@ -393,7 +450,7 @@ class FDMServer:
         try:
             self.run()
         except KeyboardInterrupt:  # pragma: no cover - runtime
-            self.logger.info("FDMServer interrupted. Shutting down...")
+            self.logger.info("Interrupt received; shutting down")
         finally:
             self.close()
 
@@ -415,7 +472,7 @@ class FDMServer:
             self.mq_sensor.disconnect()
         if self.influx is not None:
             self.influx.close()
-        self.logger.info("FDMServer shutdown complete.")
+        self.logger.info("Shutdown complete")
 
 
 if __name__ == "__main__":

@@ -12,9 +12,9 @@ from typing import Dict, List, Optional, Sequence
 import numpy as np
 import pandas as pd
 
-from software.digital_twin.communication.logger import setup_logger
 from software.digital_twin.communication.messaging import RabbitMQClient, RabbitMQConfig, resolve_queue_config
 from software.digital_twin.data_access.influx_utils import InfluxConfig, InfluxHelper
+from software.utils.logging_setup import get_logger
 
 PINN_INVERSION_QUEUE = "permafrost.record.pinn_inversion.state"
 VIZ_UPDATE_QUEUE = "permafrost.update.visualization.command"
@@ -39,7 +39,7 @@ class VizGatewayServer:
         viz_queue_config: RabbitMQConfig | None = None,
         output_dir: str = "software/outputs",
     ) -> None:
-        self.logger = setup_logger("VizGatewayServer")
+        self.logger = get_logger("VizGatewayServer")
         self.influx_config = influx_config or InfluxConfig()
 
         self.inversion_queue_config = resolve_queue_config(
@@ -61,25 +61,31 @@ class VizGatewayServer:
 
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
-        self.logger.info("VizGatewayServer configured.")
+        self.logger.info(
+            "Configured (inbound=%s, outbound=%s, output_dir=%s)",
+            self.queue_in,
+            self.queue_out,
+            self.output_dir,
+        )
 
     # -------------------------------
     # MAIN HANDLER
     # -------------------------------
     def _on_message(self, msg):
         """Triggered when inversion is complete."""
-        self.logger.info(f"Received message from inversion service: {msg}")
-        if msg.get("status") == "inverted":
+        status_flag = msg.get("status")
+        self.logger.info("Received inversion notification (status=%s)", status_flag)
+        if status_flag == "inverted":
             Thread(target=self.aggregate_and_publish, args=(msg,), daemon=True).start()
         else:
-            self.logger.warning("Message ignored (not 'inverted').")
+            self.logger.warning("Visualization trigger ignored (status=%s)", status_flag)
 
     # -------------------------------
     # DATA AGGREGATION
     # -------------------------------
     def aggregate_and_publish(self, inversion_msg: Optional[dict] = None) -> None:
         """Fetch latest data from InfluxDB and send a dashboard-ready payload."""
-        self.logger.info("Collecting FDM, PINN, and inversion artefacts for visualization payload.")
+        self.logger.info("Collecting latest FDM and PINN datasets for visualization")
 
         if self.influx is None:
             raise RuntimeError("Influx helper not initialised. Did you call setup()?")
@@ -89,6 +95,11 @@ class VizGatewayServer:
 
         fdm_df = self._prepare_dataframe(fdm_raw)
         pinn_df = self._prepare_dataframe(pinn_raw)
+        self.logger.info(
+            "Prepared visualization frames (fdm=%d points, pinn=%d points)",
+            len(fdm_df),
+            len(pinn_df),
+        )
 
         payload = self._build_payload(fdm_df, pinn_df, inversion_msg or {})
 
@@ -98,7 +109,7 @@ class VizGatewayServer:
         if self.out_publisher is None:
             raise RuntimeError("Outbound MQ client not initialised. Did you call setup()?")
         self.out_publisher.publish(payload)
-        self.logger.info("Visualization update published to %s.", self.queue_out)
+        self.logger.info("Visualization update published to %s", self.queue_out)
 
     def _build_payload(self, fdm_df: pd.DataFrame, pinn_df: pd.DataFrame, inversion_msg: Dict[str, object]) -> Dict[str, object]:
         forward_history = self._load_history(FORWARD_HISTORY_PATH)
@@ -404,7 +415,7 @@ class VizGatewayServer:
     def run(self):
         if self.mq_client is None:
             raise RuntimeError("Inbound MQ client not initialised. Did you call setup()?")
-        self.logger.info(f"Listening for inversion messages on queue: {self.queue_in}")
+        self.logger.info("Listening for inversion notifications on %s", self.queue_in)
         self.mq_client.consume(callback=self._on_message)
 
     # -------------------------------
@@ -421,7 +432,11 @@ class VizGatewayServer:
             self.out_publisher = RabbitMQClient(self.viz_queue_config)
         self.queue_in = self.inversion_queue_config.queue
         self.queue_out = self.viz_queue_config.queue
-        self.logger.info("VizGatewayServer setup complete.")
+        self.logger.info(
+            "Dependencies ready (inbound=%s, outbound=%s)",
+            self.queue_in,
+            self.queue_out,
+        )
 
     def start(self) -> None:
         """Start consuming inversion notifications."""
@@ -432,7 +447,7 @@ class VizGatewayServer:
         try:
             self.run()
         except KeyboardInterrupt:  # pragma: no cover
-            self.logger.info("VizGatewayServer interrupted. Shutting down...")
+            self.logger.info("Interrupt received; shutting down")
         finally:
             self.close()
 
@@ -452,7 +467,7 @@ class VizGatewayServer:
             self.out_publisher.disconnect()
         if self.influx is not None:
             self.influx.close()
-        self.logger.info("VizGatewayServer shutdown complete.")
+        self.logger.info("Shutdown complete")
 
 
 if __name__ == "__main__":

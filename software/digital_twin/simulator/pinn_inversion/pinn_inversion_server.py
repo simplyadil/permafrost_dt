@@ -11,10 +11,10 @@ from typing import Optional
 import pandas as pd
 import torch
 
-from software.digital_twin.communication.logger import setup_logger
 from software.digital_twin.communication.messaging import RabbitMQClient, RabbitMQConfig, resolve_queue_config
 from software.digital_twin.data_access.influx_utils import InfluxConfig, InfluxHelper
 from software.digital_twin.simulator.pinn_inversion.inversion_pinn_model import InversionFreezingSoilPINN
+from software.utils.logging_setup import get_logger
 
 FDM_QUEUE = "permafrost.record.fdm.state"
 PINN_INVERSION_QUEUE = "permafrost.record.pinn_inversion.state"
@@ -38,7 +38,7 @@ class PINNInversionServer:
         enable_training: bool = True,
         model_path: str | None = None,
     ) -> None:
-        self.logger = setup_logger("PINNInversionServer")
+        self.logger = get_logger("PINNInversionServer")
         self.influx_config = influx_config or InfluxConfig()
         self.fdm_queue_config = resolve_queue_config(
             fdm_queue_config,
@@ -81,14 +81,21 @@ class PINNInversionServer:
             log_callback=self.logger.info,
         )
         self._load_pretrained_weights()
-        self.logger.info("PINNInversionServer configured.")
+        self.logger.info(
+            "Configured (inbound=%s, outbound=%s, training=%s, device=%s)",
+            self.fdm_queue_config.queue,
+            self.inversion_queue_config.queue,
+            "on" if self.enable_training else "off",
+            self.device,
+        )
 
     def _on_message(self, msg):
-        self.logger.info(f"Received message from FDM service: {msg}")
-        if msg.get("status") == "ready":
+        status_flag = msg.get("status")
+        self.logger.info("Received FDM notification (status=%s)", status_flag)
+        if status_flag == "ready":
             Thread(target=self.run_inversion, daemon=True).start()
         else:
-            self.logger.warning("Ignored message with status '%s'.", msg.get("status"))
+            self.logger.warning("FDM notification ignored (status=%s)", status_flag)
 
     def _load_pretrained_weights(self) -> None:
         if self.model_path.exists():
@@ -141,10 +148,10 @@ class PINNInversionServer:
         if self.influx is None:
             raise RuntimeError("Influx helper not initialised. Did you call setup()?") 
 
-        self.logger.info("Fetching FDM temperature data from InfluxDB...")
+        self.logger.info("Querying InfluxDB for FDM temperature data")
         df = self.influx.query_model_temperature(measurement="fdm_simulation", limit=5000)
         if df is None or df.empty:
-            self.logger.error("No FDM data found in InfluxDB.")
+            self.logger.error("FDM temperature history unavailable; skipping inversion")
             return
 
         # Prepare tensors
@@ -166,12 +173,19 @@ class PINNInversionServer:
         T_obs_device = T_obs.to(self.device)
 
         self.pinn.boundary_data = self._build_boundary_dataframe(df)
+        boundary_count = len(self.pinn.boundary_data) if isinstance(self.pinn.boundary_data, pd.DataFrame) else 0
+        self.logger.info(
+            "Prepared inversion tensors (rows=%d, timesteps=%d)",
+            len(df),
+            boundary_count,
+        )
 
         summary = None
         validation = None
         if self.enable_training:
             x_domain = (0.0, 5.0)
             t_domain = (0.0, 365.0)
+            self.logger.info("Starting inversion training (epochs=%d)", 5000)
             params_estimated = self.pinn.train(
                 x_obs=x_obs_device,
                 t_obs=t_obs_device,
@@ -193,16 +207,16 @@ class PINNInversionServer:
                 self.logger.error("Failed to save inversion checkpoint: %s", exc)
         else:
             if not self.model_path.exists():
-                self.logger.error("Cannot emit inversion results. Checkpoint missing at %s.", self.model_path)
+                self.logger.error("Cannot emit inversion results – checkpoint missing at %s", self.model_path)
                 return
             self._load_pretrained_weights()
             params_estimated = self.pinn.get_params()
-            self.logger.info("Using pretrained inversion parameters: %s", params_estimated)
+            self.logger.info("Using pretrained inversion parameters from %s", self.model_path)
             validation = self.pinn.build_validation_summary(x_obs_device, t_obs_device, T_obs_device)
             summary = self._persist_cached_summary(status="inferred", epochs=0, validation=validation)
 
         # Log results
-        self.logger.info(f"Inversion complete. Parameters: {params_estimated}")
+        self.logger.info("Inversion complete with parameters: %s", params_estimated)
 
         # Publish result message
         result_msg = {
@@ -215,7 +229,7 @@ class PINNInversionServer:
         if self.out_publisher is None:
             raise RuntimeError("Outbound RabbitMQ client not initialised. Did you call setup()?")
         self.out_publisher.publish(result_msg)
-        self.logger.info("Result published to RabbitMQ.")
+        self.logger.info("Published inversion results to %s", self.inversion_queue_config.queue)
 
     def _persist_cached_summary(self, *, status: str, epochs: int, validation: dict | None) -> dict:
         if self.history_path.exists():
@@ -232,7 +246,7 @@ class PINNInversionServer:
     def run(self):
         if self.mq_client is None:
             raise RuntimeError("RabbitMQ client not initialised. Did you call setup()?")
-        self.logger.info("PINNInversionServer listening for messages...")
+        self.logger.info("Listening for FDM notifications on %s", self.fdm_queue_config.queue)
         self.mq_client.consume(callback=self._on_message)
 
     # Lifecycle ------------------------------------------------
@@ -245,7 +259,11 @@ class PINNInversionServer:
             self.mq_client = RabbitMQClient(self.fdm_queue_config)
         if self.out_publisher is None:
             self.out_publisher = RabbitMQClient(self.inversion_queue_config)
-        self.logger.info("PINNInversionServer setup complete.")
+        self.logger.info(
+            "Dependencies ready (inbound=%s, outbound=%s)",
+            self.fdm_queue_config.queue,
+            self.inversion_queue_config.queue,
+        )
 
     def start(self) -> None:
         """Start consuming forward PINN notifications."""
@@ -256,7 +274,7 @@ class PINNInversionServer:
         try:
             self.run()
         except KeyboardInterrupt:  # pragma: no cover
-            self.logger.info("PINNInversionServer interrupted. Shutting down...")
+            self.logger.info("Interrupt received; shutting down")
         finally:
             self.close()
 
@@ -276,7 +294,7 @@ class PINNInversionServer:
             self.out_publisher.disconnect()
         if self.influx is not None:
             self.influx.close()
-        self.logger.info("PINNInversionServer shutdown complete.")
+        self.logger.info("Shutdown complete")
 
 
 if __name__ == "__main__":

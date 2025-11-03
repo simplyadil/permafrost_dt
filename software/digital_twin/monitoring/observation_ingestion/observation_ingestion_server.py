@@ -5,9 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from software.digital_twin.communication.logger import setup_logger
 from software.digital_twin.communication.messaging import RabbitMQClient, RabbitMQConfig, resolve_queue_config
 from software.digital_twin.data_access.influx_utils import InfluxConfig, InfluxHelper
+from software.utils.logging_setup import get_logger
 
 SENSOR_QUEUE = "permafrost.record.sensors.state"
 SCHEMA_PATH = Path(__file__).resolve().parents[2] / "communication" / "schemas" / "sensor_message.json"
@@ -24,7 +24,7 @@ class ObservationIngestionServer:
         rabbitmq_config: RabbitMQConfig | None = None,
         influx_config: InfluxConfig | None = None,
     ) -> None:
-        self.logger = setup_logger("ObservationIngestionServer")
+        self.logger = get_logger("ObservationIngestionServer")
         self.rabbitmq_config = resolve_queue_config(
             rabbitmq_config,
             queue=SENSOR_QUEUE,
@@ -34,6 +34,7 @@ class ObservationIngestionServer:
         self.mq_client: Optional[RabbitMQClient] = None
         self.db: Optional[InfluxHelper] = None
         self.logger.info("ObservationIngestionServer configured.")
+        self._logged_snapshot = False
 
     # -----------------------------------------------------
     # CALLBACK: when new message arrives
@@ -49,19 +50,44 @@ class ObservationIngestionServer:
         try:
             time_days = msg["time_days"]
 
-            # Write each depth reading as an individual point
-            for depth_key, temp_value in msg.items():
-                if depth_key.startswith("temperature_"):
-                    depth_m = float(depth_key.replace("temperature_", "").replace("m", ""))
+            sensor_pairs = sorted(
+                (
+                    float(depth_key.replace("temperature_", "").replace("m", "")),
+                    float(temp_value),
+                )
+                for depth_key, temp_value in msg.items()
+                if depth_key.startswith("temperature_")
+            )
+
+            if not sensor_pairs:
+                self.logger.warning("Sensor message contained no depth readings (t=%.2fd)", time_days)
+                return
+
+            depths, temperatures = zip(*sensor_pairs)
+            if hasattr(self.db, "write_depth_series"):
+                self.db.write_depth_series(
+                    measurement="sensor_temperature",
+                    time_days=float(time_days),
+                    depths=depths,
+                    temperatures=temperatures,
+                )
+            else:  # Fallback for legacy helpers used in tests
+                for depth_m, temp in zip(depths, temperatures):
                     self.db.write_temperature(
-                        time_days=time_days,
-                        depth=depth_m,
-                        temperature=temp_value,
+                        time_days=float(time_days),
+                        depth=float(depth_m),
+                        temperature=float(temp),
                     )
 
-            self.logger.info("Processed sensor message at t=%s days.", time_days)
+            if not getattr(self, "_logged_snapshot", False):
+                self.logger.info(
+                    "Persisted sensor snapshot (t=%.2fd, depths=%d)",
+                    float(time_days),
+                    len(depths),
+                )
+                self._logged_snapshot = True
         except Exception as exc:
-            self.logger.error("Error processing message: %s", exc, exc_info=True)
+            self.logger.error("Failed to process sensor message: %s", exc, exc_info=True)
 
     # -----------------------------------------------------
     # LIFECYCLE
@@ -73,7 +99,7 @@ class ObservationIngestionServer:
             self.mq_client = RabbitMQClient(self.rabbitmq_config)
         if self.db is None:
             self.db = InfluxHelper(self.influx_config)
-        self.logger.info("ObservationIngestionServer setup complete.")
+        self.logger.info("Dependencies initialised (queue=%s)", self.rabbitmq_config.queue)
 
     def start(self) -> None:
         """Start consuming messages."""
@@ -81,11 +107,11 @@ class ObservationIngestionServer:
         if self.mq_client is None or self.db is None:
             self.setup()
 
-        self.logger.info("ObservationIngestionServer listening on %s", SENSOR_QUEUE)
+        self.logger.info("Listening for sensor updates on %s", SENSOR_QUEUE)
         try:
             self.mq_client.consume(callback=self._process_message)
         except KeyboardInterrupt:  # pragma: no cover - runtime behaviour
-            self.logger.info("ObservationIngestionServer interrupted. Shutting down...")
+            self.logger.info("Interrupt received; shutting down")
         finally:
             self.close()
 
@@ -103,7 +129,7 @@ class ObservationIngestionServer:
             self.mq_client.disconnect()
         if self.db is not None:
             self.db.close()
-        self.logger.info("ObservationIngestionServer shutdown complete.")
+        self.logger.info("Shutdown complete")
 
 
 if __name__ == "__main__":

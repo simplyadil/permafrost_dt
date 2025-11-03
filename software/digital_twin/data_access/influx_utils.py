@@ -3,13 +3,14 @@
 import datetime
 import os
 from dataclasses import dataclass
-from typing import Any, Optional
+from statistics import fmean
+from typing import Any, Optional, Sequence
 
 import pandas as pd
 from influxdb_client import InfluxDBClient, Point, WritePrecision  # type: ignore
 from influxdb_client.client.write_api import SYNCHRONOUS  # type: ignore
 
-from ..communication.logger import setup_logger
+from software.utils.logging_setup import get_logger
 
 
 @dataclass(frozen=True)
@@ -27,7 +28,7 @@ class InfluxConfig:
 class InfluxHelper:
     def __init__(self, config: InfluxConfig | None = None) -> None:
         self.config = config or InfluxConfig()
-        self.logger = setup_logger("InfluxDB")
+        self.logger = get_logger("InfluxDB")
         # Allow overriding connection settings from environment variables
         url = os.getenv("INFLUX_URL", self.config.url)
         token = os.getenv("INFLUX_TOKEN", self.config.token)
@@ -35,6 +36,7 @@ class InfluxHelper:
         bucket = os.getenv("INFLUX_BUCKET", self.config.bucket)
 
         self.bucket = bucket
+        self._logged_measurements: set[str] = set()
 
         # Create client but handle auth/connection failures gracefully so services
         # don't crash on 401/connection errors during startup. In such cases we
@@ -56,24 +58,13 @@ class InfluxHelper:
             self.query_api = None
 
     def write_temperature(self, time_days, depth, temperature, site="default"):
-        point = (
-            Point("sensor_temperature")
-            .tag("site_id", site)
-            .tag("depth", f"{depth:.1f}m")
-            .field("temperature", float(temperature))
-            .field("time_days", float(time_days))
-            .field("depth_m", float(depth))
-            .time(datetime.datetime.utcnow(), write_precision=WritePrecision.NS)
+        self.write_depth_series(
+            measurement="sensor_temperature",
+            time_days=float(time_days),
+            depths=[float(depth)],
+            temperatures=[float(temperature)],
+            site=site,
         )
-        if self.write_api is None:  # pragma: no cover - runtime fallback
-            self.logger.warning("Influx write skipped (no client available): T=%s @ %sm, t=%s", temperature, depth, time_days)
-            return
-
-        try:
-            self.write_api.write(bucket=self.bucket, record=point)
-            self.logger.info(f"Written T={temperature}°C @ {depth}m, t={time_days}d")
-        except Exception as exc:  # pragma: no cover - runtime infra
-            self.logger.error("Error writing to InfluxDB: %s", exc)
 
     def query_temperature(self, site="default", depth=None, limit=100):
         query = f'''
@@ -109,33 +100,74 @@ class InfluxHelper:
         site: str = "default",
         extra_tags: Optional[dict] = None,
     ) -> None:
-        """
-        Write temperature to an arbitrary measurement (e.g., 'fdm_simulation').
-        Depth is stored as tag 'depth' (e.g., '1.0m') for fast filtering.
-        """
-        tags = {"site_id": site, "depth": f"{depth:.1f}m"}
-        if extra_tags:
-            tags.update(extra_tags)
+        self.write_depth_series(
+            measurement=measurement,
+            time_days=time_days,
+            depths=[depth],
+            temperatures=[temperature],
+            site=site,
+            extra_tags=extra_tags,
+        )
 
-        point = Point(measurement)
-        for k, v in tags.items():
-            point = point.tag(k, v)
+    def write_depth_series(
+        self,
+        *,
+        measurement: str,
+        time_days: float,
+        depths: Sequence[float],
+        temperatures: Sequence[float],
+        site: str = "default",
+        extra_tags: Optional[dict] = None,
+    ) -> None:
+        """Write a snapshot of temperatures across depths with a single summary log."""
 
-        point = (point
-                 .field("temperature", float(temperature))
-                 .field("time_days", float(time_days))
-                 .field("depth_m", float(depth))
-                 .time(datetime.datetime.utcnow(), write_precision=WritePrecision.NS))  # type: ignore
+        if not depths:
+            return
 
         if self.write_api is None:  # pragma: no cover - runtime fallback
             self.logger.warning("Influx write skipped (no client available) for measurement %s", measurement)
             return
 
+        tags = {"site_id": site}
+        if extra_tags:
+            tags.update(extra_tags)
+
+        timestamp = datetime.datetime.utcnow()
+        records = []
+        for depth, temperature in zip(depths, temperatures):
+            point = Point(measurement)
+            for key, value in tags.items():
+                point = point.tag(key, value)
+            point = (
+                point.tag("depth", f"{float(depth):.1f}m")
+                .field("temperature", float(temperature))
+                .field("time_days", float(time_days))
+                .field("depth_m", float(depth))
+                .time(timestamp, write_precision=WritePrecision.NS)
+            )
+            records.append(point)
+
         try:
-            self.write_api.write(bucket=self.bucket, record=point)
-            self.logger.info(f"[{measurement}] Written T={temperature}°C @ {depth}m, t={time_days}d")
+            self.write_api.write(bucket=self.bucket, record=records)
         except Exception as exc:  # pragma: no cover - runtime infra
             self.logger.error("Error writing to InfluxDB (measurement=%s): %s", measurement, exc)
+            return
+
+        if measurement not in self._logged_measurements:
+            values = [float(t) for t in temperatures]
+            min_temp = min(values)
+            max_temp = max(values)
+            mean_temp = fmean(values)
+            self.logger.info(
+                "%s write complete (t=%.2fd, depths=%d, min=%.2f°C, max=%.2f°C, mean=%.2f°C)",
+                measurement,
+                float(time_days),
+                len(values),
+                min_temp,
+                max_temp,
+                mean_temp,
+            )
+            self._logged_measurements.add(measurement)
 
     def query_model_temperature(
         self,

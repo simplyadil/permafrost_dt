@@ -9,13 +9,13 @@ from typing import Optional
 
 import pandas as pd
 
-from software.digital_twin.communication.logger import setup_logger
 from software.digital_twin.communication.messaging import RabbitMQClient, RabbitMQConfig, resolve_queue_config
 from software.digital_twin.data_access.influx_utils import (
     InfluxConfig,
     InfluxHelper,
     _parse_depth_value,
 )
+from software.utils.logging_setup import get_logger
 
 
 SURFACE_DEPTH_METERS = 0.0
@@ -43,7 +43,7 @@ class BoundaryForcingServer:
         synthetic_start_day: float = 0.0,
         synthetic_step_days: float = 1.0,
     ) -> None:
-        self.logger = setup_logger("BoundaryForcingServer")
+        self.logger = get_logger("BoundaryForcingServer")
         self.polling_interval = polling_interval
         self.rabbitmq_config = resolve_queue_config(
             rabbitmq_config,
@@ -57,7 +57,12 @@ class BoundaryForcingServer:
         self._synthetic_enabled = synthetic_enabled
         self._synthetic_time_days = synthetic_start_day
         self._synthetic_step_days = synthetic_step_days
-        self.logger.info("BoundaryForcingServer initialised with polling interval %ss.", polling_interval)
+        self.logger.info(
+            "Configured (poll_interval=%ss, synthetic=%s)",
+            polling_interval,
+            "on" if synthetic_enabled else "off",
+        )
+        self._logged_publish = False
 
     def _latest_surface_sample(self, df: pd.DataFrame) -> Optional[pd.Series]:
         if df.empty:
@@ -114,7 +119,9 @@ class BoundaryForcingServer:
             Ts=float(Ts),
         )
         self.logger.debug(
-            "Generated synthetic boundary forcing: Ts=%.2f°C at t=%.2f days.", message.Ts, message.time_days
+            "Generated synthetic boundary forcing (t=%.2fd, Ts=%.2f°C)",
+            message.time_days,
+            message.Ts,
         )
         return message
 
@@ -127,11 +134,15 @@ class BoundaryForcingServer:
         if self.mq_client is None:
             raise RuntimeError("RabbitMQ client not initialised. Did you call setup()?")
         self.mq_client.publish(payload)
-        self.logger.info(
-            "Published boundary forcing: Ts=%s°C @ t=%s",
-            message.Ts,
-            message.time_days,
-        )
+        if not getattr(self, "_logged_publish", False):
+            queue_name = getattr(self.rabbitmq_config, "queue", "unknown")
+            self.logger.info(
+                "Published boundary conditions (t=%.2fd, Ts=%.2f°C) to %s",
+                message.time_days,
+                message.Ts,
+                queue_name,
+            )
+            self._logged_publish = True
 
     def run_once(self) -> Optional[BoundaryMessage]:
         """Execute a single polling iteration."""
@@ -157,7 +168,8 @@ class BoundaryForcingServer:
         if self.influx is None:
             self.influx = InfluxHelper(self.influx_config)
         self._running = True
-        self.logger.info("BoundaryForcingServer setup complete.")
+        queue_name = getattr(self.rabbitmq_config, "queue", "unknown")
+        self.logger.info("Dependencies initialised (queue=%s)", queue_name)
 
     def start(self) -> None:
         """Begin polling loop until stopped."""
@@ -165,16 +177,16 @@ class BoundaryForcingServer:
         if self.mq_client is None or self.influx is None:
             self.setup()
 
-        self.logger.info("BoundaryForcingServer polling for boundary data...")
+        self.logger.info("Polling boundary data every %ss", self.polling_interval)
         try:
             while self._running:
                 try:
                     self.run_once()
                 except Exception as exc:  # pragma: no cover - integration behaviour
-                    self.logger.error("Error during boundary forcing computation: %s", exc)
+                    self.logger.error("Boundary forcing computation failed: %s", exc, exc_info=True)
                 time.sleep(self.polling_interval)
         except KeyboardInterrupt:  # pragma: no cover - runtime behaviour
-            self.logger.info("BoundaryForcingServer interrupted. Shutting down...")
+            self.logger.info("Interrupt received; shutting down")
         finally:
             self.close()
 
@@ -191,7 +203,7 @@ class BoundaryForcingServer:
             self.mq_client.disconnect()
         if self.influx is not None:
             self.influx.close()
-        self.logger.info("BoundaryForcingServer shutdown complete.")
+        self.logger.info("Shutdown complete")
 
 
 if __name__ == "__main__":

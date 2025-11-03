@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import json
 import logging
-import logging.config
 from pathlib import Path
 from typing import Any, Dict
+
+from software.utils.logging_setup import configure_logging as configure_runtime_logging
 
 DEFAULT_CONFIG: Dict[str, Any] = {
     "rabbitmq": {
@@ -66,10 +67,6 @@ def load_startup_config(path: Path | str = Path("startup.conf")) -> Dict[str, An
 
 
 def configure_logging(config_path: Path | str = Path("logging.conf")) -> None:
-    """Configure standard logging based on the provided config file."""
+    """Initialise logging using the shared configuration helper."""
 
-    path = Path(config_path)
-    if path.exists():
-        logging.config.fileConfig(path, disable_existing_loggers=False)
-    else:
-        logging.basicConfig(level=logging.INFO)
+    configure_runtime_logging()

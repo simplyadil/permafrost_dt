@@ -11,7 +11,7 @@ import jsonschema
 import pika
 from pika.adapters.blocking_connection import BlockingChannel
 
-from .logger import setup_logger
+from software.utils.logging_setup import get_logger
 
 
 Message = Dict[str, Any]
@@ -51,7 +51,7 @@ class RabbitMQClient:
         if not config.queue:
             raise ValueError("RabbitMQ queue must be provided.")
 
-        self.logger = setup_logger("RabbitMQ")
+        self.logger = get_logger("RabbitMQClient")
         self.config = config
         self.host = config.host
         self.queue = config.queue
@@ -88,7 +88,6 @@ class RabbitMQClient:
             )
             self.channel = self.connection.channel()
             self.channel.queue_declare(queue=self.queue, durable=True)
-            self.logger.info("Connected to RabbitMQ (%s), queue: %s", self.host, self.queue)
         except Exception as exc:  # pragma: no cover - requires broker
             self.logger.error("Connection error: %s", exc)
             raise
@@ -98,7 +97,6 @@ class RabbitMQClient:
 
         if self.connection and self.connection.is_open:
             self.connection.close()
-            self.logger.info("Disconnected from RabbitMQ (%s)", self.host)
         self.connection = None
         self.channel = None
 
@@ -118,7 +116,7 @@ class RabbitMQClient:
         try:
             jsonschema.validate(instance=message, schema=self.schema)
         except jsonschema.exceptions.ValidationError as exc:
-            self.logger.error("Message validation failed: %s", exc.message)
+            self.logger.error("Rejected message for %s: %s", self.queue, exc.message)
             raise
 
     # ------------------------------------------------------
@@ -140,13 +138,8 @@ class RabbitMQClient:
                 body=json.dumps(message),
                 properties=pika.BasicProperties(delivery_mode=2),
             )
-            self.logger.info(
-                "Published message to %s: keys=%s",
-                self.queue,
-                list(message.keys()),
-            )
         except Exception as exc:  # pragma: no cover - requires broker
-            self.logger.error("Failed to publish message: %s", exc)
+            self.logger.error("Failed to publish message to %s: %s", self.queue, exc)
             raise
 
     # ------------------------------------------------------
@@ -164,20 +157,14 @@ class RabbitMQClient:
             try:
                 msg: Message = json.loads(body)
                 self.validate_message(msg)
-                self.logger.info(
-                    "Received message from %s (keys=%s)",
-                    self.queue,
-                    list(msg.keys()),
-                )
                 callback(msg)
                 if not auto_ack:
                     ch.basic_ack(delivery_tag=method.delivery_tag)
             except Exception as exc:  # pragma: no cover - requires broker
-                self.logger.error("Error processing message: %s", exc)
+                self.logger.error("Error processing message from %s: %s", self.queue, exc)
                 if not auto_ack:
                     ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
 
         self.channel.basic_qos(prefetch_count=1)
         self.channel.basic_consume(queue=self.queue, on_message_callback=_callback, auto_ack=auto_ack)
-        self.logger.info("Started consuming from queue: %s", self.queue)
         self.channel.start_consuming()

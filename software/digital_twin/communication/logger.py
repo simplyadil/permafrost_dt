@@ -1,22 +1,14 @@
-# software/services/common/logger.py
-import logging
-import sys
+"""Backward compatible logger shim."""
 
-def setup_logger(service_name: str) -> logging.Logger:
-    """
-    Configures a unified logger for all services.
-    """
-    logger = logging.getLogger(service_name)
-    logger.setLevel(logging.INFO)
+from __future__ import annotations
 
-    handler = logging.StreamHandler(sys.stdout)
-    formatter = logging.Formatter(
-        fmt="%(asctime)s [%(levelname)s] [%(name)s] %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-    handler.setFormatter(formatter)
+from software.utils.logging_setup import get_logger
 
-    if not logger.hasHandlers():
-        logger.addHandler(handler)
 
-    return logger
+def setup_logger(service_name: str):
+    """Deprecated entry point – prefer importing :func:`get_logger` directly."""
+
+    return get_logger(service_name)
+
+
+__all__ = ["setup_logger"]
