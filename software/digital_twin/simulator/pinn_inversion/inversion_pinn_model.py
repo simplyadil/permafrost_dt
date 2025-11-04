@@ -351,3 +351,9 @@ class InversionFreezingSoilPINN:
         self.T_max = state.get("T_max", 20.0)
         self.model.eval()
         self.log(f"Inversion PINN weights loaded from {model_path}")
+
+    def predict(self, x: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+        """Predict temperature values at given space-time coordinates."""
+        with torch.no_grad():
+            pred = self.model(torch.cat([x, t], dim=1))
+            return pred * self.T_max  # Scale back to real temperature units

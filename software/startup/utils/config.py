@@ -38,7 +38,14 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     },
     "pinn_inversion": {
         "enable_training": False,
-        "model_path": "software/models/pinn_inversion/inversion_pinn.pt",
+        "model_path": "software/models/pinn_inversion/freezing_soil_pinn_inverse.pt",
+    },
+    "viz_dashboard": {
+        "host": "0.0.0.0",
+        "port": 8050,
+        "refresh_seconds": 60.0,
+        "snapshot_dir": "software/outputs",
+        "fetch_limit": 20000,
     },
 }
 

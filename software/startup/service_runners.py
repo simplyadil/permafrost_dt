@@ -12,6 +12,7 @@ import software.digital_twin.simulator.fdm.fdm_server as fdm_module
 import software.digital_twin.simulator.pinn_forward.pinn_forward_server as pinn_forward_module
 import software.digital_twin.simulator.pinn_inversion.pinn_inversion_server as pinn_inversion_module
 import software.digital_twin.visualization.viz_gateway.viz_gateway_server as viz_module
+import software.digital_twin.visualization.viz_gateway.visualization_service as viz_service_module
 
 
 def build_influx_config(values: Dict[str, str]) -> InfluxConfig:
@@ -124,6 +125,20 @@ def create_viz_gateway_server(
     )
 
 
+def create_viz_dashboard_service(
+    influx_config: InfluxConfig,
+    dashboard_cfg: Dict[str, object],
+):
+    return viz_service_module.VisualizationService(
+        influx_config=influx_config,
+        host=str(dashboard_cfg.get("host", "0.0.0.0")),
+        port=int(dashboard_cfg.get("port", 8050)),
+        refresh_seconds=float(dashboard_cfg.get("refresh_seconds", 60.0)),
+        fetch_limit=int(dashboard_cfg.get("fetch_limit", 20000)),
+        output_dir=dashboard_cfg.get("snapshot_dir", "software/outputs"),
+    )
+
+
 # --------------------------------------------------------------------------- #
 # Runner factories (used by start_all_services).
 # --------------------------------------------------------------------------- #
@@ -190,3 +205,10 @@ def make_viz_gateway_runner(
     rabbit_cfg: Dict[str, str],
 ) -> Callable[[], None]:
     return make_runner(lambda: create_viz_gateway_server(influx_config, rabbit_cfg))
+
+
+def make_viz_dashboard_runner(
+    influx_config: InfluxConfig,
+    dashboard_cfg: Dict[str, object],
+) -> Callable[[], None]:
+    return make_runner(lambda: create_viz_dashboard_service(influx_config, dashboard_cfg))

@@ -21,7 +21,10 @@ from software.startup.service_runners import (
     make_pinn_forward_runner,
     make_pinn_inversion_runner,
     make_viz_gateway_runner,
+    make_viz_dashboard_runner,
 )
+from software.startup.docker_services.start_influxdb import start_docker_influxdb
+from software.startup.docker_services.start_rabbitmq import start_docker_rabbitmq
 from software.startup.utils.daemon import start_as_daemon
 from software.startup.utils.config import configure_logging, load_startup_config
 
@@ -36,6 +39,7 @@ def main() -> None:
     synthetic_boundary_cfg = config.get("synthetic_boundary", {})
     pinn_forward_cfg = config.get("pinn_forward", {})
     pinn_inversion_cfg = config.get("pinn_inversion", {})
+    viz_dashboard_cfg = config.get("viz_dashboard", {})
 
     influx_defaults = build_influx_config(influx_cfg_values)
 
@@ -46,6 +50,7 @@ def main() -> None:
         "pinn_forward": lambda: make_pinn_forward_runner(influx_defaults, rabbit_cfg, pinn_forward_cfg),
         "pinn_inversion": lambda: make_pinn_inversion_runner(influx_defaults, rabbit_cfg, pinn_inversion_cfg),
         "viz_gateway": lambda: make_viz_gateway_runner(influx_defaults, rabbit_cfg),
+        "viz_dashboard": lambda: make_viz_dashboard_runner(influx_defaults, viz_dashboard_cfg),
     }
 
     # Uncomment the services you want to run.
@@ -54,13 +59,14 @@ def main() -> None:
         "boundary_forcing",
         "fdm",
         # "pinn_forward",
-        # "pinn_inversion",
+         "pinn_inversion",
         # "viz_gateway",
+        # "viz_dashboard",
     ]
 
     # Optionally start local Docker dependencies first.
-    # start_docker_rabbitmq()
-    # start_docker_influxdb()
+    start_docker_rabbitmq()
+    start_docker_influxdb()
 
     processes = []
 

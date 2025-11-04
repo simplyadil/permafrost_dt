@@ -66,6 +66,11 @@ The digital twin follows a microservices architecture pattern, with distinct ser
    - Generates visualization-ready messages
    - Supports real-time data streaming
 
+7. **Visualization Dashboard** (`digital_twin/visualization/viz_gateway/streamlit_viz_app.py`)
+   - Streamlit-based web UI consuming the same InfluxDB streams
+   - Provides contour plots, comparisons, and diagnostics
+   - Offers auto-refresh and manual reload controls
+
 ## Infrastructure Components
 
 - **Communication Layer** (`digital_twin/communication/`)
@@ -191,6 +196,14 @@ Many services are written as simple Python modules you can run directly. Example
 python software/digital_twin/visualization/viz_gateway/viz_gateway_server.py
 ```
 
+Launch the interactive dashboard (optional, non-blocking) to visualise aggregated outputs:
+
+```bash
+streamlit run software/digital_twin/visualization/viz_gateway/streamlit_viz_app.py
+```
+
+The command honours the `viz_dashboard` block in `startup.conf` (host, port, refresh, history depth). You can still run `python -m software.startup.start_viz_dashboard` if you prefer the managed launcher—it simply spawns the Streamlit app with the configured settings. The UI auto-refreshes every 60 seconds, offers a **Reload Data** button, and swaps in friendly placeholders until upstream datasets or diagnostics are available.
+
 If you run scripts directly from the `software` tree, the tests and some scripts include a small `sys.path` adjustment to allow running modules directly for development.
 
 ### Synthetic observation stream
@@ -253,4 +266,3 @@ python integration_tests/test_observation_ingestion_server.py
   - Run scripts from repository root
   - Use module notation: `python -m software.digital_twin.{service}`
   - Verify virtual environment is activated
-

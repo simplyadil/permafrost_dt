@@ -219,13 +219,28 @@ class PINNInversionServer:
         self.logger.info("Inversion complete with parameters: %s", params_estimated)
 
         # Publish result message
+        validation_overall = summary.get("validation", {}).get("overall") if summary else None
+
         result_msg = {
             "timestamp": datetime.utcnow().isoformat(),
             "status": "inverted",
             "parameters": params_estimated,
             "history_path": str(self.history_path),
-            "validation_overall": summary.get("validation", {}).get("overall") if summary else None,
+            "validation_overall": validation_overall,
         }
+
+        if self.influx is not None:
+            try:
+                timestamp_dt = datetime.fromisoformat(result_msg["timestamp"])
+                self.influx.write_inversion_parameters(
+                    params_estimated,
+                    status=result_msg["status"],
+                    validation=validation_overall,
+                    timestamp=timestamp_dt,
+                )
+            except Exception as exc:  # pragma: no cover - defensive persistence
+                self.logger.warning("Failed to persist inversion parameters to Influx: %s", exc)
+
         if self.out_publisher is None:
             raise RuntimeError("Outbound RabbitMQ client not initialised. Did you call setup()?")
         self.out_publisher.publish(result_msg)

@@ -169,6 +169,49 @@ class InfluxHelper:
             )
             self._logged_measurements.add(measurement)
 
+    def write_inversion_parameters(
+        self,
+        parameters: dict[str, float],
+        *,
+        status: str = "inverted",
+        site: str = "default",
+        validation: dict[str, float] | None = None,
+        timestamp: datetime.datetime | None = None,
+    ) -> None:
+        """Persist aggregated PINN inversion parameters for downstream visualization."""
+
+        if not parameters:
+            return
+
+        if self.write_api is None:  # pragma: no cover - runtime fallback
+            self.logger.warning("Influx write skipped (no client available) for measurement pinn_inversion")
+            return
+
+        record = Point("pinn_inversion").tag("site_id", site).tag("status", status)
+        timestamp = timestamp or datetime.datetime.utcnow()
+
+        for key, value in parameters.items():
+            try:
+                record = record.field(key, float(value))
+            except (TypeError, ValueError):
+                self.logger.warning("Skipping invalid inversion parameter %s=%s", key, value)
+
+        if validation:
+            for key, value in validation.items():
+                if value is None:
+                    continue
+                try:
+                    record = record.field(f"validation_{key}", float(value))
+                except (TypeError, ValueError):
+                    self.logger.debug("Skipping invalid validation metric %s=%s", key, value)
+
+        record = record.field("timestamp", timestamp.isoformat()).time(timestamp, write_precision=WritePrecision.NS)
+
+        try:
+            self.write_api.write(bucket=self.bucket, record=[record])
+        except Exception as exc:  # pragma: no cover - runtime infra
+            self.logger.error("Error writing inversion parameters to InfluxDB: %s", exc)
+
     def query_model_temperature(
         self,
         measurement: str,
@@ -207,6 +250,101 @@ class InfluxHelper:
         if hasattr(tables, "empty"):
             return self._coerce_depth_column(tables)  # type: ignore[arg-type]
         return pd.DataFrame()
+
+    def _query_measurement(
+        self,
+        measurement: str,
+        *,
+        site: str = "default",
+        limit: int = 1000,
+        range_start: str = "-30d",
+    ) -> pd.DataFrame:
+        """Generic measurement query helper with pivoted fields."""
+
+        if self.query_api is None:  # pragma: no cover - runtime fallback
+            self.logger.warning("Influx query skipped (no client available) for measurement %s", measurement)
+            return pd.DataFrame()
+
+        query = f'''
+        from(bucket: "{self.bucket}")
+          |> range(start: {range_start})
+          |> filter(fn: (r) => r["_measurement"] == "{measurement}")
+        '''
+        if site:
+            query += f'\n  |> filter(fn: (r) => r["site_id"] == "{site}")'
+        query += f'''
+          |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+          |> sort(columns: ["_time"])
+          |> limit(n: {limit})
+        '''
+
+        try:
+            tables = self.query_api.query_data_frame(query)
+        except Exception as exc:  # pragma: no cover - runtime infra
+            self.logger.error("Error querying InfluxDB (measurement=%s): %s", measurement, exc)
+            return pd.DataFrame()
+
+        if isinstance(tables, list) and tables:
+            df = tables[0]
+        elif isinstance(tables, pd.DataFrame):
+            df = tables
+        else:
+            return pd.DataFrame()
+
+        if getattr(df, "empty", False):
+            return pd.DataFrame()
+
+        df = df.sort_values("_time").reset_index(drop=True)
+        return df
+
+    def query_boundary_flux(
+        self,
+        *,
+        site: str = "default",
+        limit: int = 1000,
+        range_start: str = "-30d",
+    ) -> pd.DataFrame:
+        """Fetch boundary heat flux diagnostics."""
+
+        return self._query_measurement(
+            "boundary_flux",
+            site=site,
+            limit=limit,
+            range_start=range_start,
+        )
+
+    def query_pinn_residuals(
+        self,
+        *,
+        site: str = "default",
+        limit: int = 5000,
+        range_start: str = "-30d",
+    ) -> pd.DataFrame:
+        """Fetch PINN residual diagnostics."""
+
+        df = self._query_measurement(
+            "pinn_residuals",
+            site=site,
+            limit=limit,
+            range_start=range_start,
+        )
+        return self._coerce_depth_column(df)
+
+    def query_inversion_parameters(
+        self,
+        *,
+        site: str = "default",
+        limit: int = 100,
+        range_start: str = "-90d",
+    ) -> pd.DataFrame:
+        """Fetch recorded inversion parameter sets."""
+
+        return self._query_measurement(
+            "pinn_inversion",
+            site=site,
+            limit=limit,
+            range_start=range_start,
+        )
 
     def close(self) -> None:
         """Release the underlying InfluxDB client."""
