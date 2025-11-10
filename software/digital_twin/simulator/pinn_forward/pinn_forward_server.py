@@ -124,6 +124,7 @@ class PINNForwardServer:
             self.logger.error("FDM history unavailable; skipping PINN update")
             return
 
+        # TODO: track the last processed timestamp so we don't re-query and regenerate every historical point on each trigger!!!
         time_steps = sorted(df["time_days"].unique())
         self.logger.info(
             "Fetched FDM history (rows=%d, timesteps=%d)",

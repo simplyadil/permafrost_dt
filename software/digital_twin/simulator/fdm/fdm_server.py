@@ -128,9 +128,9 @@ class FDMServer:
         self._logged_sensor_publish = False
         self._logged_ready = False
 
-    # ---------------------------
-    # Physics helpers (from notebook)
-    # ---------------------------
+    # -----------------
+    # Physics helpers 
+    # -----------------
     def pore_water_content(self, T: np.ndarray) -> np.ndarray:
         Tn = self.phys.T_nabla
         b = self.phys.b
@@ -213,7 +213,7 @@ class FDMServer:
             len(self.x),
         )
 
-    # same sinusoid as notebook (used only if no forcing is available)
+    # same sinusoid used in the notebook (used only if no forcing is available)
     @staticmethod
     def _sinusoid_air_temp(t_days: float) -> float:
         return 4.03 + 16.11 * math.sin((2 * math.pi * t_days / 365.0) - 1.709)

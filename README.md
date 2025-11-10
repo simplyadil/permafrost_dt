@@ -8,13 +8,11 @@ This repository implements a digital twin system for permafrost thermal modeling
 - [Prerequisites](#prerequisites)
 - [Getting Started](#getting-started)
   - [Installation](#installation)
-  - [Running the Digital Twin](#running-the-digital-twin)
-  - [Running Tests](#running-tests)
-- [Services Overview](#services-overview)
-- [Infrastructure Setup](#infrastructure-setup)
+  - [Configuration](#configuration)
+  - [Quick service bootstrap](#quick-service-bootstrap)
+- [Running individual services](#running-individual-services)
+- [Tests](#tests)
 - [Troubleshooting](#troubleshooting)
-- [Development Notes](#development-notes)
-- [Contributing](#contributing)
 
 # About this Project
 
@@ -123,29 +121,39 @@ Optional but recommended:
 
 ## Installation
 
-1. Clone the repository:
-```bash
-git clone https://github.com/simplyadil/permafrost_DT.git
-cd permafrost_DT
-```
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/simplyadil/permafrost_DT.git
+   cd permafrost_DT
+   ```
 
-2. Create and activate a virtual environment:
-```bash
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# or
-.\venv\Scripts\activate   # Windows
-```
+2. **Create and activate a virtual environment**
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # Linux/Mac
+   # or
+   .\venv\Scripts\activate   # Windows
+   ```
 
-3. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
+3. **Upgrade pip tooling (prevents the classic `setuptools`/`wheel` errors)**
+   ```bash
+   python -m pip install --upgrade pip setuptools wheel
+   ```
 
-4. (Optional) Install GPU-enabled PyTorch:
-```bash
-# Visit pytorch.org and follow instructions for your system
-```
+4. **Install the project requirements**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+5. **(Recommended) Install the repository in editable mode so module imports just work**
+   ```bash
+   pip install -e .
+   ```
+
+6. **(Optional) Install GPU-enabled PyTorch**
+   ```bash
+   # Visit pytorch.org and follow instructions for your system
+   ```
 
 ## Configuration
 
@@ -166,7 +174,9 @@ RABBITMQ_USER=permafrost
 RABBITMQ_PASSWORD=permafrost
 ```
 
-Set these in your shell or create a `.env` file.
+Set these in your shell or create a `.env` file (the startup helpers automatically load it if present).
+
+Before launching anything, review `startup.conf`—it contains the same values plus service-specific knobs (synthetic data, model paths, dashboard host/port, etc.). The default configuration targets a fully local developer machine, so updating the tokens/URLs there is usually the only manual step.
 
 ### Infrastructure Setup
 
@@ -188,6 +198,17 @@ python software/startup/docker_services/start_influxdb.py
 python software/startup/docker_services/start_rabbitmq.py
 ```
 
+### Quick service bootstrap
+
+Once the Docker dependencies are up, you can launch multiple services at once via:
+
+```bash
+python -m software.startup.start_all_services
+```
+
+Uncomment the services you need inside `software/startup/start_all_services.py` (PINNs are off by default to keep startup light). Each runner inherits the configuration from `startup.conf`, so double-check model paths and synthetic-data switches before starting.
+
+
 ## Running individual services
 
 Many services are written as simple Python modules you can run directly. Example: run the viz gateway (ensure env vars are set):
@@ -202,7 +223,7 @@ Launch the interactive dashboard (optional, non-blocking) to visualise aggregate
 streamlit run software/digital_twin/visualization/viz_gateway/streamlit_viz_app.py
 ```
 
-The command honours the `viz_dashboard` block in `startup.conf` (host, port, refresh, history depth). You can still run `python -m software.startup.start_viz_dashboard` if you prefer the managed launcher—it simply spawns the Streamlit app with the configured settings. The UI auto-refreshes every 60 seconds, offers a **Reload Data** button, and swaps in friendly placeholders until upstream datasets or diagnostics are available.
+The command honours the `viz_dashboard` block in `startup.conf` (host, port, refresh, history depth). You can still run `python -m software.startup.start_viz_dashboard` if you prefer the managed launcher—it simply spawns the Streamlit app with the configured settings. The UI auto-refreshes every 60 seconds, and swaps in friendly placeholders until upstream datasets or diagnostics are available.
 
 If you run scripts directly from the `software` tree, the tests and some scripts include a small `sys.path` adjustment to allow running modules directly for development.
 

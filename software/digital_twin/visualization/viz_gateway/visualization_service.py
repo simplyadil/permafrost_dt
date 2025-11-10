@@ -22,9 +22,9 @@ from software.utils.logging_setup import get_logger
 PlotBuilder = Callable[[Dict[str, Any]], Tuple[go.Figure, str]]
 
 
-# --------------------------------------------------------------------------- #
-# Plot helpers (unchanged notebook translations)
-# --------------------------------------------------------------------------- #
+# -------------------------------- #
+# Plot helpers 
+# -------------------------------- #
 
 def plot_temperature_contour(x: np.ndarray, time: np.ndarray, T: np.ndarray) -> go.Figure:
     """Plot temperature distribution over time and depth."""
