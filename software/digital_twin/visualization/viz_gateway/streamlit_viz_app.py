@@ -7,7 +7,7 @@ import os
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Any
 
 import streamlit as st
 
@@ -48,17 +48,14 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-if "reload_seed" not in st.session_state:
-    st.session_state["reload_seed"] = 0
-
 st.sidebar.title("Visualization Dashboard")
 st.sidebar.caption(
     "Explore FDM, PINN, and inversion outputs. Data refreshes automatically every "
-    f"{int(viz_config.refresh_seconds)} seconds; use the button for an immediate reload."
+    f"{int(viz_config.refresh_seconds)} seconds."
 )
 
 @st.cache_data(ttl=CACHE_TTL_SECONDS)
-def load_payload(seed: int, fetch_limit: int, output_dir_str: str, influx_dict: Dict[str, str]):
+def load_payload(fetch_limit: int, output_dir_str: str, influx_dict: Dict[str, str]):
     cfg = InfluxConfig(**influx_dict)
     bridge = VizDataBridge(influx_config=cfg, fetch_limit=fetch_limit, output_dir=output_dir_str)
     try:
@@ -67,9 +64,8 @@ def load_payload(seed: int, fetch_limit: int, output_dir_str: str, influx_dict: 
         bridge.close()
 
 
-def refresh_data() -> Dict[str, any]:
+def refresh_data() -> Dict[str, Any]:
     payload = load_payload(
-        st.session_state["reload_seed"],
         viz_config.fetch_limit,
         str(viz_config.output_dir),
         asdict(influx_cfg),
@@ -77,10 +73,7 @@ def refresh_data() -> Dict[str, any]:
     return payload
 
 
-if st.sidebar.button("Reload Data", use_container_width=True):
-    st.session_state["reload_seed"] += 1
-    load_payload.clear()
-    st.experimental_rerun()
+
 
 payload = refresh_data()
 status = payload.get("status", "unknown")
