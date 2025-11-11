@@ -6,8 +6,9 @@ import math
 import os
 from datetime import datetime
 from pathlib import Path
+from queue import Queue, Empty
 from threading import Thread
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence, Any
 
 import numpy as np
 import pandas as pd
@@ -58,6 +59,8 @@ class VizGatewayServer:
         self.mq_client: Optional[RabbitMQClient] = None
         self.out_publisher: Optional[RabbitMQClient] = None
         self.influx: Optional[InfluxHelper] = None
+        self._work_queue: Queue[Any] = Queue()
+        self._worker: Optional[Thread] = None
 
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
@@ -76,7 +79,7 @@ class VizGatewayServer:
         status_flag = msg.get("status")
         self.logger.info("Received inversion notification (status=%s)", status_flag)
         if status_flag == "inverted":
-            Thread(target=self.aggregate_and_publish, args=(msg,), daemon=True).start()
+            self._work_queue.put(msg)
         else:
             self.logger.warning("Visualization trigger ignored (status=%s)", status_flag)
 
@@ -437,6 +440,7 @@ class VizGatewayServer:
             self.queue_in,
             self.queue_out,
         )
+        self._ensure_worker()
 
     def start(self) -> None:
         """Start consuming inversion notifications."""
@@ -461,6 +465,9 @@ class VizGatewayServer:
         """Release resources."""
 
         self.stop()
+        if self._worker is not None:
+            self._work_queue.put(None)
+            self._worker.join(timeout=5)
         if self.mq_client is not None:
             self.mq_client.disconnect()
         if self.out_publisher is not None:
@@ -468,6 +475,31 @@ class VizGatewayServer:
         if self.influx is not None:
             self.influx.close()
         self.logger.info("Shutdown complete")
+
+    # -------------------------------
+    # INTERNALS
+    # -------------------------------
+    def _ensure_worker(self) -> None:
+        if self._worker is not None and self._worker.is_alive():
+            return
+        self._worker = Thread(target=self._drain_queue, name="viz-gateway-worker", daemon=True)
+        self._worker.start()
+
+    def _drain_queue(self) -> None:
+        while True:
+            try:
+                message = self._work_queue.get(timeout=1)
+            except Empty:
+                continue
+            if message is None:
+                self._work_queue.task_done()
+                break
+            try:
+                self.aggregate_and_publish(message)
+            except Exception:
+                self.logger.exception("Failed to publish visualization update")
+            finally:
+                self._work_queue.task_done()
 
 
 if __name__ == "__main__":
