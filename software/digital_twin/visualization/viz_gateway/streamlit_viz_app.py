@@ -96,5 +96,5 @@ selected_plot = st.sidebar.radio("Panels", plot_keys, format_func=lambda key: pl
 figure_builder = FIGURE_BUILDERS[selected_plot][1]
 
 figure, description = figure_builder(payload)
-st.plotly_chart(figure, use_container_width=True)
+st.plotly_chart(figure, width=True)
 st.caption(description)
