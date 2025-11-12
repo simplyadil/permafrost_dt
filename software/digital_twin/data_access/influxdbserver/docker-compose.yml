@@ -10,7 +10,7 @@ services:
       - DOCKER_INFLUXDB_INIT_USERNAME=permafrost
       - DOCKER_INFLUXDB_INIT_PASSWORD=permafrost
       - DOCKER_INFLUXDB_INIT_ORG=permafrost
-      - DOCKER_INFLUXDB_INIT_BUCKET=permafrost
+      - DOCKER_INFLUXDB_INIT_BUCKET=permafrost_data
       - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=permafrost
     volumes:
       - influxdb_data:/var/lib/influxdb2
