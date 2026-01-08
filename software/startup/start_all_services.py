@@ -39,6 +39,7 @@ def main() -> None:
     synthetic_boundary_cfg = config.get("synthetic_boundary", {})
     pinn_forward_cfg = config.get("pinn_forward", {})
     pinn_inversion_cfg = config.get("pinn_inversion", {})
+    viz_gateway_cfg = config.get("viz_gateway", {})
     viz_dashboard_cfg = config.get("viz_dashboard", {})
 
     influx_defaults = build_influx_config(influx_cfg_values)
@@ -49,19 +50,19 @@ def main() -> None:
         "fdm": lambda: make_fdm_runner(influx_defaults, rabbit_cfg, synthetic_obs_cfg),
         "pinn_forward": lambda: make_pinn_forward_runner(influx_defaults, rabbit_cfg, pinn_forward_cfg),
         "pinn_inversion": lambda: make_pinn_inversion_runner(influx_defaults, rabbit_cfg, pinn_inversion_cfg),
-        "viz_gateway": lambda: make_viz_gateway_runner(influx_defaults, rabbit_cfg),
+        "viz_gateway": lambda: make_viz_gateway_runner(influx_defaults, rabbit_cfg, viz_gateway_cfg),
         "viz_dashboard": lambda: make_viz_dashboard_runner(influx_defaults, viz_dashboard_cfg),
     }
 
     # Uncomment the services you want to run.
     services_to_start: List[str] = [
-        "observation_ingestion",
+        # "observation_ingestion",
         "boundary_forcing",
         "fdm",
         # "pinn_forward",
-         "pinn_inversion",
+        # "pinn_inversion",
         # "viz_gateway",
-        # "viz_dashboard",
+         "viz_dashboard",
     ]
 
     # Optionally start local Docker dependencies first.

@@ -37,6 +37,7 @@ class PINNInversionServer:
         *,
         enable_training: bool = True,
         model_path: str | None = None,
+        fdm_fetch_limit: int = 5000,
     ) -> None:
         self.logger = get_logger("PINNInversionServer")
         self.influx_config = influx_config or InfluxConfig()
@@ -62,6 +63,7 @@ class PINNInversionServer:
         self.model_path = Path(model_path) if model_path is not None else default_checkpoint
         self.history_path = Path(self.model_dir) / INVERSION_HISTORY_FILENAME
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.fdm_fetch_limit = int(fdm_fetch_limit)
         self.pinn = InversionFreezingSoilPINN(
             known_params={
                 "L": 3.34e5,
@@ -149,7 +151,7 @@ class PINNInversionServer:
             raise RuntimeError("Influx helper not initialised. Did you call setup()?") 
 
         self.logger.info("Querying InfluxDB for FDM temperature data")
-        df = self.influx.query_model_temperature(measurement="fdm_simulation", limit=5000)
+        df = self.influx.query_model_temperature(measurement="fdm_simulation", limit=self.fdm_fetch_limit)
         if df is None or df.empty:
             self.logger.error("FDM temperature history unavailable; skipping inversion")
             return

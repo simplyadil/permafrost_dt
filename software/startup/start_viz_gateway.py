@@ -17,9 +17,10 @@ def main() -> None:
 
     rabbit_cfg = config.get("rabbitmq", {})
     influx_cfg = config.get("influxdb", {})
+    viz_gateway_cfg = config.get("viz_gateway", {})
 
     influx_defaults = build_influx_config(influx_cfg)
-    server = create_viz_gateway_server(influx_defaults, rabbit_cfg)
+    server = create_viz_gateway_server(influx_defaults, rabbit_cfg, viz_gateway_cfg)
 
     def shutdown_handler(*_args) -> None:
         server.close()

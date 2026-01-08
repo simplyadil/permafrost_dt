@@ -30,15 +30,21 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "synthetic_boundary": {
         "enabled": True,
         "start_day": 0.0,
-        "step_days": 1.0,
+        # Increase simulated time advance so we cover a year quickly (365d / 5d ≈ 73 steps).
+        "step_days": 5.0,
     },
     "pinn_forward": {
         "enable_training": False,
         "model_path": "software/models/pinn_forward/freezing_soil_pinn.pt",
+        "fdm_fetch_limit": 5000,
     },
     "pinn_inversion": {
         "enable_training": False,
         "model_path": "software/models/pinn_inversion/freezing_soil_pinn_inverse.pt",
+        "fdm_fetch_limit": 5000,
+    },
+    "viz_gateway": {
+        "fetch_limit": 20000,
     },
     "viz_dashboard": {
         "host": "0.0.0.0",

@@ -39,6 +39,8 @@ class VizGatewayServer:
         inversion_queue_config: RabbitMQConfig | None = None,
         viz_queue_config: RabbitMQConfig | None = None,
         output_dir: str = "software/outputs",
+        *,
+        fetch_limit: int = 20000,
     ) -> None:
         self.logger = get_logger("VizGatewayServer")
         self.influx_config = influx_config or InfluxConfig()
@@ -63,6 +65,7 @@ class VizGatewayServer:
         self._worker: Optional[Thread] = None
 
         self.output_dir = output_dir
+        self.fetch_limit = int(fetch_limit)
         os.makedirs(self.output_dir, exist_ok=True)
         self.logger.info(
             "Configured (inbound=%s, outbound=%s, output_dir=%s)",
@@ -93,8 +96,8 @@ class VizGatewayServer:
         if self.influx is None:
             raise RuntimeError("Influx helper not initialised. Did you call setup()?")
 
-        fdm_raw = self.influx.query_model_temperature("fdm_simulation", limit=20000)
-        pinn_raw = self.influx.query_model_temperature("pinn_forward", limit=20000)
+        fdm_raw = self.influx.query_model_temperature("fdm_simulation", limit=self.fetch_limit)
+        pinn_raw = self.influx.query_model_temperature("pinn_forward", limit=self.fetch_limit)
 
         fdm_df = self._prepare_dataframe(fdm_raw)
         pinn_df = self._prepare_dataframe(pinn_raw)

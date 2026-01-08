@@ -26,16 +26,16 @@ PlotBuilder = Callable[[Dict[str, Any]], Tuple[go.Figure, str]]
 # Plot helpers 
 # -------------------------------- #
 
-def plot_temperature_contour(x: np.ndarray, time: np.ndarray, T: np.ndarray) -> go.Figure:
+def plot_temperature_contour(time: np.ndarray, depth: np.ndarray, T: np.ndarray) -> go.Figure:
     """Plot temperature distribution over time and depth."""
     fig = go.Figure(
         data=[
             go.Contour(
-                x=x,
-                y=time,
+                x=time,
+                y=depth,
                 z=T,
-                colorscale="RdBu",
-                reversescale=True,
+                colorscale="jet",
+                reversescale=False,
                 contours=dict(coloring="heatmap"),
                 colorbar=dict(title="Temperature (°C)"),
             )
@@ -44,8 +44,31 @@ def plot_temperature_contour(x: np.ndarray, time: np.ndarray, T: np.ndarray) -> 
     fig.update_layout(
         template="plotly_dark",
         title="Temperature distribution over time and depth",
-        xaxis_title="Depth (m)",
-        yaxis_title="Time (days)",
+        xaxis_title="Time (days)",
+        yaxis_title="Depth (m)",
+    )
+    return fig
+
+
+def plot_temperature_heatmap(time: np.ndarray, depth: np.ndarray, T: np.ndarray) -> go.Figure:
+    """Plot temperature distribution when contour is underdetermined."""
+    fig = go.Figure(
+        data=[
+            go.Heatmap(
+                x=time,
+                y=depth,
+                z=T,
+                colorscale="RdBu",
+                reversescale=True,
+                colorbar=dict(title="Temperature (°C)"),
+            )
+        ]
+    )
+    fig.update_layout(
+        template="plotly_dark",
+        title="Temperature distribution over time and depth",
+        xaxis_title="Time (days)",
+        yaxis_title="Depth (m)",
     )
     return fig
 
@@ -57,23 +80,23 @@ def plot_temperature_profiles(
     *,
     sample_indices: Iterable[int],
 ) -> go.Figure:
-    """Plot temperature profiles at selected time steps."""
+    """Plot temperature time series at selected depths."""
     fig = go.Figure()
     for idx in sample_indices:
-        if idx >= len(time):
+        if idx >= len(x):
             continue
         fig.add_trace(
             go.Scatter(
-                x=x,
-                y=T[idx, :],
+                x=time,
+                y=T[:, idx],
                 mode="lines",
-                name=f"t={time[idx]:.1f}d",
+                name=f"z={x[idx]:.1f}m",
             )
         )
     fig.update_layout(
         template="plotly_dark",
-        title="Temperature profiles over time",
-        xaxis_title="Depth (m)",
+        title="Temperature vs time at selected depths",
+        xaxis_title="Time (days)",
         yaxis_title="Temperature (°C)",
     )
     return fig
@@ -340,16 +363,35 @@ def render_summary_lines(summary: Dict[str, Any]) -> List[str]:
 
 def build_temperature_evolution(payload: Dict[str, Any]) -> Tuple[go.Figure, str]:
     grid = (payload.get("fdm") or {}).get("grid") or {}
-    x = _safe_array(grid.get("depth_m"))
+    depth = _safe_array(grid.get("depth_m"))
     time = _safe_array(grid.get("time_days"))
     T = _matrix_to_time_major(grid.get("temperature"))
-    if x.size == 0 or time.size == 0 or T.size == 0:
+    if depth.size == 0 or time.size == 0 or T.size == 0:
         return (
             placeholder_figure("Temperature Evolution", "No FDM temperature data available yet."),
             "Waiting for FDM simulation results.",
         )
-    figure = plot_temperature_contour(x, time, T)
-    description = f"Contour built from {T.shape[0]} time steps and {T.shape[1]} depth levels."
+    if not np.isfinite(T).any():
+        return (
+            placeholder_figure("Temperature Evolution", "FDM temperature grid has no finite values."),
+            "Waiting for valid FDM simulation results.",
+        )
+    finite_time = time[np.isfinite(time)]
+    time_offset = float(finite_time.min()) if finite_time.size else 0.0
+    time_zeroed = time - time_offset
+    T_plot = T.T
+    if time.size < 2 or depth.size < 2:
+        figure = plot_temperature_heatmap(time_zeroed, depth, T_plot)
+        description = (
+            f"Heatmap built from {T.shape[0]} time steps and {T.shape[1]} depth levels "
+            f"(t0={time_offset:.2f}d)."
+        )
+        return figure, description
+    figure = plot_temperature_contour(time_zeroed, depth, T_plot)
+    description = (
+        f"Contour built from {T.shape[0]} time steps and {T.shape[1]} depth levels "
+        f"(t0={time_offset:.2f}d)."
+    )
     return figure, description
 
 
@@ -363,9 +405,14 @@ def build_temperature_profiles(payload: Dict[str, Any]) -> Tuple[go.Figure, str]
             placeholder_figure("Temperature Profiles", "No FDM temperature data available yet."),
             "Waiting for FDM simulation results.",
         )
-    sample_indices = _evenly_spaced_indices(len(time), max_count=6)
-    figure = plot_temperature_profiles(x, time, T, sample_indices=sample_indices)
-    description = f"Profiles sampled across {len(sample_indices)} time snapshots."
+    target_depths = np.array([0, 1, 2, 3, 4, 5], dtype=float)
+    sort_idx = np.argsort(x)
+    x_sorted = x[sort_idx]
+    T_sorted = T[:, sort_idx]
+    T_interp = np.vstack([np.interp(target_depths, x_sorted, row) for row in T_sorted])
+    sample_indices = list(range(len(target_depths)))
+    figure = plot_temperature_profiles(target_depths, time, T_interp, sample_indices=sample_indices)
+    description = f"Time series for {len(sample_indices)} depth levels."
     return figure, description
 
 

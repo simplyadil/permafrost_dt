@@ -38,6 +38,7 @@ class PINNForwardServer:
         *,
         enable_training: bool = True,
         model_path: str | None = None,
+        fdm_fetch_limit: int = 5000,
     ) -> None:
         self.logger = get_logger("PINNForwardServer")
         self.influx_config = influx_config or InfluxConfig()
@@ -58,6 +59,7 @@ class PINNForwardServer:
         default_checkpoint = Path(self.model_dir) / "freezing_soil_pinn.pt"
         self.model_path = Path(model_path) if model_path is not None else default_checkpoint
         self.history_path = Path(self.model_dir) / PINN_HISTORY_FILENAME
+        self.fdm_fetch_limit = int(fdm_fetch_limit)
 
         self.influx: Optional[InfluxHelper] = None
         self.mq_client: Optional[RabbitMQClient] = None
@@ -118,8 +120,8 @@ class PINNForwardServer:
         if self.influx is None:
             raise RuntimeError("Influx helper not initialised. Did you call setup()?")
 
-        self.logger.info("Querying InfluxDB for FDM simulation history")
-        df = self.influx.query_model_temperature(measurement="fdm_simulation", limit=5000)
+        self.logger.info("Querying InfluxDB for FDM simulation history (limit=%d)", self.fdm_fetch_limit)
+        df = self.influx.query_model_temperature(measurement="fdm_simulation", limit=self.fdm_fetch_limit)
         if df is None or df.empty:
             self.logger.error("FDM history unavailable; skipping PINN update")
             return

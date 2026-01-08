@@ -97,6 +97,7 @@ def create_pinn_forward_server(
         forward_queue_config=_rabbit_config(rabbit_cfg, pinn_forward_module.PINN_FORWARD_SCHEMA),
         enable_training=pinn_cfg.get("enable_training", True),
         model_path=pinn_cfg.get("model_path"),
+        fdm_fetch_limit=int(pinn_cfg.get("fdm_fetch_limit", 5000)),
     )
 
 
@@ -111,17 +112,20 @@ def create_pinn_inversion_server(
         inversion_queue_config=_rabbit_config(rabbit_cfg, pinn_inversion_module.PINN_INVERSION_SCHEMA),
         enable_training=pinn_cfg.get("enable_training", True),
         model_path=pinn_cfg.get("model_path"),
+        fdm_fetch_limit=int(pinn_cfg.get("fdm_fetch_limit", 5000)),
     )
 
 
 def create_viz_gateway_server(
     influx_config: InfluxConfig,
     rabbit_cfg: Dict[str, str],
+    viz_cfg: Dict[str, object],
 ):
     return viz_module.VizGatewayServer(
         influx_config=influx_config,
         inversion_queue_config=_rabbit_config(rabbit_cfg, viz_module.PINN_INVERSION_SCHEMA),
         viz_queue_config=_rabbit_config(rabbit_cfg, viz_module.VIZ_UPDATE_SCHEMA),
+        fetch_limit=int(viz_cfg.get("fetch_limit", 20000)),
     )
 
 
@@ -203,8 +207,9 @@ def make_pinn_inversion_runner(
 def make_viz_gateway_runner(
     influx_config: InfluxConfig,
     rabbit_cfg: Dict[str, str],
+    viz_cfg: Dict[str, object],
 ) -> Callable[[], None]:
-    return make_runner(lambda: create_viz_gateway_server(influx_config, rabbit_cfg))
+    return make_runner(lambda: create_viz_gateway_server(influx_config, rabbit_cfg, viz_cfg))
 
 
 def make_viz_dashboard_runner(

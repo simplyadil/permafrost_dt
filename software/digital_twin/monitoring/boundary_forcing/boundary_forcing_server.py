@@ -57,6 +57,7 @@ class BoundaryForcingServer:
         self._synthetic_enabled = synthetic_enabled
         self._synthetic_time_days = synthetic_start_day
         self._synthetic_step_days = synthetic_step_days
+        self._last_published_time_days: Optional[float] = None
         self.logger.info(
             "Configured (poll_interval=%ss, synthetic=%s)",
             polling_interval,
@@ -97,6 +98,13 @@ class BoundaryForcingServer:
             time_days=float(latest_sample["time_days"]),
             Ts=float(latest_sample["temperature"]),
         )
+        if self._last_published_time_days is not None and message.time_days <= self._last_published_time_days:
+            self.logger.warning(
+                "Skipping boundary forcing (non-increasing time_days %.2f <= %.2f)",
+                message.time_days,
+                self._last_published_time_days,
+            )
+            return None
         if self._synthetic_enabled:
             self._synthetic_time_days = float(message.time_days) + self._synthetic_step_days
         return message
@@ -111,6 +119,9 @@ class BoundaryForcingServer:
             return None
 
         t_day = self._synthetic_time_days
+        if self._last_published_time_days is not None and t_day <= self._last_published_time_days:
+            t_day = self._last_published_time_days + self._synthetic_step_days
+            self._synthetic_time_days = t_day
         Ts = self._sinusoid_air_temp(t_day)
         self._synthetic_time_days += self._synthetic_step_days
         message = BoundaryMessage(
@@ -134,6 +145,7 @@ class BoundaryForcingServer:
         if self.mq_client is None:
             raise RuntimeError("RabbitMQ client not initialised. Did you call setup()?")
         self.mq_client.publish(payload)
+        self._last_published_time_days = message.time_days
         if not getattr(self, "_logged_publish", False):
             queue_name = getattr(self.rabbitmq_config, "queue", "unknown")
             self.logger.info(
@@ -147,13 +159,19 @@ class BoundaryForcingServer:
     def run_once(self) -> Optional[BoundaryMessage]:
         """Execute a single polling iteration."""
 
+        if self._synthetic_enabled:
+            message = self._generate_synthetic_boundary()
+            if message is not None:
+                self.publish_boundary_forcing(message)
+            else:
+                self.logger.debug("Synthetic boundary forcing unavailable.")
+            return message
+
         if self.influx is None:
-            raise RuntimeError("Influx client not initialised. Did you call setup()?")
+            raise RuntimeError("Influx client not initialised. Did you call setup()?")  # pragma: no cover
 
         dataframe = self.influx.query_temperature(limit=200)
         message = self.compute_boundary_forcing(dataframe)
-        if message is None:
-            message = self._generate_synthetic_boundary()
         if message is not None:
             self.publish_boundary_forcing(message)
         else:

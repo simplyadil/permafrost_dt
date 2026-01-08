@@ -18,14 +18,14 @@ from software.utils.logging_setup import get_logger
 class PhysicsParams:
     # Given parameters
     L: float = 3.34e5       # Latent heat of phase change (KJ/m^3)
-    C_i: float = 1.672      # Heat capacity of ice (KJ/(m^3·K))
-    C_l: float = 4.18       # Heat capacity of water (KJ/(m^3·K))
+    C_i: float = 1672.0     # Heat capacity of ice (KJ/(m^3·K))
+    C_l: float = 4180.0     # Heat capacity of water (KJ/(m^3·K))
     lambda_i: float = 2.210 # Thermal conductivity of ice (W/(m·K))
     lambda_l: float = 0.465 # Thermal conductivity of water (W/(m·K))
 
     # Unknown/soil parameters (tunable)
     lambda_f: float = 1.5   # Thermal conductivity soil matrix (W/(m·K))
-    C_f: float = 1.5        # Heat capacity soil matrix (KJ/(m^3·K))
+    C_f: float = 1500.0     # Heat capacity soil matrix (KJ/(m^3·K))
     eta: float = 0.4        # Porosity
     b: float = 1.5          # Unfrozen water exponent
     T_nabla: float = -1.0   # Freezing temperature (°C)
@@ -259,6 +259,8 @@ class FDMServer:
             lam_plus = 0.5 * (lam[1:-1] + lam[2:])
             lam_minus = 0.5 * (lam[1:-1] + lam[:-2])
             rhs[1:-1] = (lam_plus * (self.T[2:] - self.T[1:-1]) - lam_minus * (self.T[1:-1] - self.T[:-2])) / (self.dx ** 2)
+            # Convert W/(m·K) -> kJ/(m^3·day) to match C_eff (kJ/(m^3·K)) and dt_days.
+            rhs[1:-1] *= 86400.0 / 1000.0
 
             # Latent term dθ/dt (use previous θ)
             dtheta_dt = (theta - self.theta_prev) / (dt_days + 1e-12)  # per day (consistent with dt_days unit)
@@ -391,14 +393,38 @@ class FDMServer:
             return
 
         if self.current_time_days is None:
-            # Initialize with linear profile between Ts_new and bottom
-            T_init = Ts_new + (self.bottom_bc_temp - Ts_new) * (self.x / self.grid.Lx)
-            self.T = T_init.astype(float)
-            self.theta_prev = self.unfrozen_water_content(self.T)
-            self.current_time_days = t_new
+            # Initialize at t=0 to ensure a cold-start profile, then advance to t_new.
+            if t_new > 0.0:
+                Ts0 = self._sinusoid_air_temp(0.0)
+                T_init = Ts0 + (self.bottom_bc_temp - Ts0) * (self.x / self.grid.Lx)
+                self.T = T_init.astype(float)
+                self.theta_prev = self.unfrozen_water_content(self.T)
+                self.current_time_days = 0.0
+                self._write_profile(0.0)
+                self._publish_sensor_observation(0.0)
+            else:
+                T_init = Ts_new + (self.bottom_bc_temp - Ts_new) * (self.x / self.grid.Lx)
+                self.T = T_init.astype(float)
+                self.theta_prev = self.unfrozen_water_content(self.T)
+                self.current_time_days = t_new
+                self._write_profile(t_new)
+                self._publish_sensor_observation(t_new)
+                self._notify_ready(t_new)
+                return
+
+            Ts_prev = float(self.T[0]) if self.T is not None else Ts_new
+            self._advance(self.current_time_days, t_new, Ts_prev, Ts_new)
             self._write_profile(t_new)
             self._publish_sensor_observation(t_new)
             self._notify_ready(t_new)
+            return
+
+        if t_new <= self.current_time_days:
+            self.logger.warning(
+                "Skipping FDM update (non-increasing time_days %.2f <= %.2f)",
+                t_new,
+                self.current_time_days,
+            )
             return
 
         # Advance from current_time_days → t_new

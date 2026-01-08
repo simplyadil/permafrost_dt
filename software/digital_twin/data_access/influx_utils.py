@@ -78,8 +78,9 @@ class InfluxHelper:
 
         query += f'''
           |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
-          |> limit(n: {limit})
         '''
+        if limit is not None and int(limit) > 0:
+            query += f'\n  |> limit(n: {int(limit)})'
 
         tables = self.query_api.query_data_frame(query)
         if isinstance(tables, list) and len(tables) > 0:
@@ -233,8 +234,9 @@ class InfluxHelper:
 
         q += f'''
           |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
-          |> limit(n: {limit})
         '''
+        if limit is not None and int(limit) > 0:
+            q += f'\n  |> limit(n: {int(limit)})'
         if self.query_api is None:  # pragma: no cover - runtime fallback
             self.logger.warning("Influx query skipped (no client available) for measurement %s", measurement)
             return pd.DataFrame()
@@ -275,8 +277,9 @@ class InfluxHelper:
         query += f'''
           |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
           |> sort(columns: ["_time"])
-          |> limit(n: {limit})
         '''
+        if limit is not None and int(limit) > 0:
+            query += f'\n  |> limit(n: {int(limit)})'
 
         try:
             tables = self.query_api.query_data_frame(query)
