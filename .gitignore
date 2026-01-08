@@ -8,3 +8,10 @@ __pycache__/
 logs
 
 integration_tests
+logs/digital_twin.log
+software/models/pinn_forward/freezing_soil_pinn_history.json
+
+# Test & tooling caches
+.pytest_cache/
+.mypy_cache/
+.cache/
