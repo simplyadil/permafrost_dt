@@ -95,6 +95,19 @@ plot_labels = {key: FIGURE_BUILDERS[key][0] for key in plot_keys}
 selected_plot = st.sidebar.radio("Panels", plot_keys, format_func=lambda key: plot_labels[key])
 figure_builder = FIGURE_BUILDERS[selected_plot][1]
 
+if selected_plot == "time_series":
+    series = (payload.get("comparison") or {}).get("per_depth_series") or []
+    depth_options = [float(entry.get("depth_m", 0.0)) for entry in series]
+    if depth_options:
+        depth_options = sorted(set(depth_options))
+        selected_depth = st.radio(
+            "Depth for time series (m)",
+            depth_options,
+            horizontal=True,
+        )
+        payload = dict(payload)
+        payload["selected_depth"] = float(selected_depth)
+
 figure, description = figure_builder(payload)
 st.plotly_chart(figure, use_container_width=True)
 st.caption(description)

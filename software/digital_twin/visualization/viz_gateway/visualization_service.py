@@ -13,6 +13,7 @@ from typing import Any, Callable, Dict, Iterable, List, Tuple
 
 import numpy as np
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 from software.digital_twin.data_access.influx_utils import InfluxConfig, InfluxHelper
 from software.digital_twin.simulator.fdm.fdm_server import PhysicsParams
@@ -142,14 +143,26 @@ def plot_pinn_vs_fdm(
     time_label: float,
 ) -> go.Figure:
     """Plot PINN and FDM temperature comparison at a single time slice."""
-    fig = go.Figure()
+    if x.size and (temperature_pinn.size == x.size) and (temperature_fdm.size == x.size):
+        order = np.argsort(x)
+        x = x[order]
+        temperature_pinn = temperature_pinn[order]
+        temperature_fdm = temperature_fdm[order]
+    fig = make_subplots(
+        rows=1,
+        cols=2,
+        shared_yaxes=True,
+        subplot_titles=("PINN", "FDM"),
+    )
     fig.add_trace(
         go.Scatter(
             x=x,
             y=temperature_pinn,
             mode="lines",
             name="PINN",
-        )
+        ),
+        row=1,
+        col=1,
     )
     fig.add_trace(
         go.Scatter(
@@ -158,7 +171,9 @@ def plot_pinn_vs_fdm(
             mode="lines",
             name="FDM",
             line=dict(dash="dash"),
-        )
+        ),
+        row=1,
+        col=2,
     )
     fig.update_layout(
         template="plotly_dark",
@@ -166,6 +181,8 @@ def plot_pinn_vs_fdm(
         xaxis_title="Depth (m)",
         yaxis_title="Temperature (°C)",
     )
+    fig.update_xaxes(title_text="Depth (m)", row=1, col=1)
+    fig.update_xaxes(title_text="Depth (m)", row=1, col=2)
     return fig
 
 
@@ -246,10 +263,10 @@ def plot_error_field(
     fig = go.Figure(
         data=[
             go.Heatmap(
-                x=x,
-                y=time,
+                x=time,
+                y=x,
                 z=error_matrix,
-                colorscale="Viridis",
+                colorscale="Hot",
                 colorbar=dict(title="|Error| (°C)"),
             )
         ]
@@ -257,8 +274,8 @@ def plot_error_field(
     fig.update_layout(
         template="plotly_dark",
         title="Prediction error field",
-        xaxis_title="Depth (m)",
-        yaxis_title="Time (days)",
+        xaxis_title="Time (days)",
+        yaxis_title="Depth (m)",
     )
     return fig
 
@@ -450,44 +467,64 @@ def build_pinn_vs_fdm(payload: Dict[str, Any]) -> Tuple[go.Figure, str]:
             "Waiting for overlapping PINN and FDM samples.",
         )
     figure = plot_pinn_vs_fdm(x, pinn, fdm, time_label=time_value)
-    description = f"Snapshot at t={time_value:.2f} days with {x.size} depths."
+    description = f"Side-by-side PINN and FDM profiles at t={time_value:.2f} days."
     return figure, description
 
 
 def build_parameter_inversion(payload: Dict[str, Any]) -> Tuple[go.Figure, str]:
     inversion = payload.get("inversion") or {}
     parameters = inversion.get("parameters") or {}
-    x = np.linspace(0.0, 5.0, 50)
-    lambda_profile = parameters.get("lambda_profile")
-    lambda_pred: np.ndarray | None = None
-    if isinstance(lambda_profile, (list, tuple, np.ndarray)) and len(lambda_profile) > 0:
-        lambda_pred_array = _safe_array(lambda_profile)
-        if lambda_pred_array.size == len(x):
-            lambda_pred = lambda_pred_array.astype(float)
-        elif lambda_pred_array.size > 1:
-            lambda_pred = np.interp(
-                x,
-                np.linspace(0.0, float(x[-1]), num=lambda_pred_array.size),
-                lambda_pred_array.astype(float),
-            )
-        else:
-            scalar = _maybe_float(lambda_pred_array[0])
-            if scalar is not None:
-                lambda_pred = np.full_like(x, scalar, dtype=float)
-    if lambda_pred is None:
-        predicted_value = _maybe_float(parameters.get("lambda_f"))
-        if predicted_value is None:
-            return (
-                placeholder_figure("Parameter Inversion", "Inversion results not available yet."),
-                "Awaiting inversion output.",
-            )
-        lambda_pred = np.full_like(x, predicted_value, dtype=float)
-    baseline_value = _maybe_float(parameters.get("lambda_true"))
-    if baseline_value is None:
-        baseline_value = PhysicsParams().lambda_f
-    lambda_true = np.full_like(x, baseline_value, dtype=float)
-    figure = plot_parameter_inversion(x, lambda_pred, lambda_true)
-    description = f"λ profile derived from latest inversion (mean={float(np.mean(lambda_pred)):.3f} W/m·K)."
+    param_keys = ["lambda_f", "C_f", "eta", "b", "T_nabla"]
+    param_labels = {
+        "lambda_f": "Thermal conductivity (λ_f)",
+        "C_f": "Heat capacity (C_f)",
+        "eta": "Porosity (η)",
+        "b": "Unfrozen water exponent (b)",
+        "T_nabla": "Freezing temperature (T∇)",
+    }
+    predicted_values = []
+    true_values = []
+    physics_defaults = PhysicsParams()
+    for key in param_keys:
+        predicted_values.append(_maybe_float(parameters.get(key)))
+        true_candidate = _maybe_float(parameters.get(f"{key}_true"))
+        if true_candidate is None:
+            true_candidate = _maybe_float(getattr(physics_defaults, key, None))
+        true_values.append(true_candidate)
+
+    if all(value is None for value in predicted_values):
+        return (
+            placeholder_figure("Parameter Inversion", "Inversion results not available yet."),
+            "Awaiting inversion output.",
+        )
+
+    figure = make_subplots(
+        rows=2,
+        cols=3,
+        subplot_titles=[param_labels.get(key, key) for key in param_keys] + [""],
+    )
+    for idx, key in enumerate(param_keys):
+        row = (idx // 3) + 1
+        col = (idx % 3) + 1
+        pred = predicted_values[idx]
+        true = true_values[idx]
+        figure.add_trace(
+            go.Bar(
+                x=["Predicted", "True"],
+                y=[pred if pred is not None else 0.0, true if true is not None else 0.0],
+                marker_color=["#38bdf8", "#f97316"],
+                showlegend=False,
+            ),
+            row=row,
+            col=col,
+        )
+        figure.update_yaxes(title_text=param_labels.get(key, key), row=row, col=col)
+    figure.update_layout(
+        template="plotly_dark",
+        title="Parameter inversion result",
+        showlegend=False,
+    )
+    description = "Predicted parameters compared against baseline values."
     return figure, description
 
 
@@ -499,7 +536,14 @@ def build_time_series(payload: Dict[str, Any]) -> Tuple[go.Figure, str]:
             placeholder_figure("Real vs Predicted", "Time-series comparison unavailable."),
             "Waiting for overlapping PINN and FDM samples.",
         )
+    selected_depth = _maybe_float(payload.get("selected_depth"))
     entry = series[0]
+    if selected_depth is not None:
+        for candidate in series:
+            depth_value = _maybe_float(candidate.get("depth_m"))
+            if depth_value is not None and abs(depth_value - selected_depth) <= 1e-6:
+                entry = candidate
+                break
     time = _safe_array(entry.get("time_days"))
     fdm = _safe_array(entry.get("fdm"))
     pinn = _safe_array(entry.get("pinn"))

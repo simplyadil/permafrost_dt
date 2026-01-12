@@ -220,6 +220,10 @@ class FreezingSoilPINN:
         state_dict = torch.load(model_path, map_location=self.device)
         self.model.load_state_dict(state_dict)
         self.model.eval()
+        # Restore scaling factor for inference.
+        if self.T_max is None:
+            t_test = torch.linspace(0.0, 365.0, 1000, device=self.device)
+            self.T_max = torch.max(self._boundary_temp(t_test)).item()
         self.log(f"Model weights loaded from {model_path}")
 
     # -------------------------

@@ -308,6 +308,16 @@ class FDMServer:
                     site="default",
                     extra_tags={"model": "fdm"},
                 )
+        if hasattr(self.influx, "write_boundary_flux") and self.T is not None:
+            lam = self.effective_lambda(self.T)
+            q_surface = -float(lam[0]) * (float(self.T[1]) - float(self.T[0])) / float(self.dx)
+            q_bottom = -float(lam[-1]) * (float(self.T[-1]) - float(self.T[-2])) / float(self.dx)
+            self.influx.write_boundary_flux(
+                time_days=float(t_day),
+                q_surface=q_surface,
+                q_bottom=q_bottom,
+                site="default",
+            )
         self.logger.info(
             "Advanced simulation step (t=%.2fd, depths=%d, Ts=%.2f°C)",
             float(t_day),

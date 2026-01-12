@@ -177,6 +177,8 @@ class PINNForwardServer:
             )
             x_tensor = torch.tensor(x_vals, device=self.pinn.device, dtype=torch.float32).unsqueeze(1)
             T_pred = self.pinn.predict(x_tensor, t_tensor).cpu().numpy().reshape(-1)
+            if self.pinn.T_max:
+                T_pred = T_pred * float(self.pinn.T_max)
 
             self.influx.write_depth_series(
                 measurement="pinn_forward",

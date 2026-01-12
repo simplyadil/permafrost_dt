@@ -209,6 +209,38 @@ class VizGatewayServer:
         if fdm_df.empty or pinn_df.empty:
             return result
 
+        def _build_interpolated_error_grid() -> Dict[str, object]:
+            time_values = sorted(set(fdm_df["time_days"]).intersection(set(pinn_df["time_days"])))
+            if not time_values:
+                return {"time_days": [], "depth_m": [], "abs_error": []}
+            depth_values = sorted(fdm_df["depth_m"].unique())
+            if not depth_values:
+                return {"time_days": [], "depth_m": [], "abs_error": []}
+            matrix = []
+            valid_times = []
+            for t in time_values:
+                fdm_slice = fdm_df[fdm_df["time_days"] == t].sort_values("depth_m")
+                pinn_slice = pinn_df[pinn_df["time_days"] == t].sort_values("depth_m")
+                if fdm_slice.empty or pinn_slice.empty:
+                    continue
+                pinn_depths = pinn_slice["depth_m"].astype(float).to_numpy()
+                pinn_temps = pinn_slice["temperature"].astype(float).to_numpy()
+                if pinn_depths.size < 2:
+                    continue
+                fdm_depths = fdm_slice["depth_m"].astype(float).to_numpy()
+                fdm_temps = fdm_slice["temperature"].astype(float).to_numpy()
+                pinn_interp = np.interp(fdm_depths, pinn_depths, pinn_temps)
+                abs_error = np.abs(pinn_interp - fdm_temps)
+                matrix.append(abs_error.tolist())
+                valid_times.append(float(t))
+            if not valid_times:
+                return {"time_days": [], "depth_m": [], "abs_error": []}
+            return {
+                "time_days": valid_times,
+                "depth_m": [float(d) for d in depth_values],
+                "abs_error": matrix,
+            }
+
         left = fdm_df.rename(columns={"temperature": "temperature_fdm"})
         right = pinn_df.rename(columns={"temperature": "temperature_pinn"})
         merged = pd.merge(left, right, on=["time_days", "depth_m"], how="inner")
@@ -217,7 +249,12 @@ class VizGatewayServer:
 
         merged["abs_error"] = (merged["temperature_pinn"] - merged["temperature_fdm"]).abs()
         result["pair_count"] = int(len(merged))
-        result["abs_error_grid"] = self._build_grid(merged, value_column="abs_error", value_key="abs_error")
+        interpolated_grid = _build_interpolated_error_grid()
+        result["abs_error_grid"] = interpolated_grid if interpolated_grid["time_days"] else self._build_grid(
+            merged,
+            value_column="abs_error",
+            value_key="abs_error",
+        )
 
         overall = {
             "mean_abs_error": float(merged["abs_error"].mean()),

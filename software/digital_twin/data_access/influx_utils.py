@@ -213,6 +213,34 @@ class InfluxHelper:
         except Exception as exc:  # pragma: no cover - runtime infra
             self.logger.error("Error writing inversion parameters to InfluxDB: %s", exc)
 
+    def write_boundary_flux(
+        self,
+        *,
+        time_days: float,
+        q_surface: float,
+        q_bottom: float,
+        site: str = "default",
+    ) -> None:
+        """Persist boundary heat flux diagnostics."""
+
+        if self.write_api is None:  # pragma: no cover - runtime fallback
+            self.logger.warning("Influx write skipped (no client available) for measurement boundary_flux")
+            return
+
+        timestamp = datetime.datetime.utcnow()
+        record = (
+            Point("boundary_flux")
+            .tag("site_id", site)
+            .field("time_days", float(time_days))
+            .field("q_surface", float(q_surface))
+            .field("q_bottom", float(q_bottom))
+            .time(timestamp, write_precision=WritePrecision.NS)
+        )
+        try:
+            self.write_api.write(bucket=self.bucket, record=[record])
+        except Exception as exc:  # pragma: no cover - runtime infra
+            self.logger.error("Error writing boundary flux to InfluxDB: %s", exc)
+
     def query_model_temperature(
         self,
         measurement: str,
