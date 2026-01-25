@@ -23,36 +23,15 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "username": "permafrost",
         "password": "permafrost",
     },
-    "synthetic_observations": {
-        "enabled": True,
-        "depths_m": [0, 1, 2, 3, 4, 5],
-    },
-    "synthetic_boundary": {
-        "enabled": True,
-        "start_day": 0.0,
-        # Increase simulated time advance so we cover a year quickly (365d / 5d ≈ 73 steps).
-        "step_days": 5.0,
-    },
-    "pinn_forward": {
-        "enable_training": False,
-        "model_path": "software/models/pinn_forward/freezing_soil_pinn.pt",
-        "fdm_fetch_limit": 5000,
-    },
-    "pinn_inversion": {
-        "enable_training": False,
-        "model_path": "software/models/pinn_inversion/freezing_soil_pinn_inverse.pt",
-        "fdm_fetch_limit": 5000,
-    },
-    "viz_gateway": {
-        "fetch_limit": 20000,
-    },
-    "viz_dashboard": {
-        "host": "0.0.0.0",
-        "port": 8050,
-        "refresh_seconds": 60.0,
-        "snapshot_dir": "software/outputs",
-        "fetch_limit": 20000,
-    },
+    "observation_ingestion_2d": {},
+    "boundary_and_forcing_builder": {},
+    "thaw_front_reconstruction": {},
+    "pinn_inversion_2d": {},
+    "fem_forecast": {},
+    "safety_monitor": {},
+    "heater_actuation": {},
+    "viz_gateway": {},
+    "viz_dashboard": {},
 }
 
 
