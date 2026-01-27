@@ -7,11 +7,11 @@
     "timestamp": {
       "type": "string",
       "format": "date-time",
-      "description": "ISO timestamp of the reading (optional if using time_days only)"
+      "description": "ISO timestamp of the reading (optional if using time_hours only)"
     },
-    "time_days": {
+    "time_hours": {
       "type": "number",
-      "description": "Elapsed time since start of measurement in days"
+      "description": "Elapsed time since start of measurement in hours"
     },
     "temperature_0m": { "type": "number", "description": "Temperature at surface (0m depth)" },
     "temperature_1m": { "type": "number", "description": "Temperature at 1m depth" },
@@ -21,7 +21,7 @@
     "temperature_5m": { "type": "number", "description": "Temperature at 5m depth" }
   },
   "required": [
-    "time_days",
+    "time_hours",
     "temperature_0m",
     "temperature_1m",
     "temperature_2m",

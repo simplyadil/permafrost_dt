@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "BoundaryConditionMessage",
+  "description": "Boundary condition snapshot for 2D FEM inputs.",
+  "type": "object",
+  "properties": {
+    "timestamp": { "type": "string", "format": "date-time" },
+    "time_hours": { "type": "number" },
+    "boundaries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "boundary_set": { "type": "string" },
+          "bc_type": { "type": "string", "enum": ["dirichlet", "neumann", "robin"] },
+          "temperature": { "type": ["number", "null"] },
+          "heat_flux": { "type": ["number", "null"] },
+          "h_coeff": { "type": ["number", "null"] }
+        },
+        "required": ["boundary_set", "bc_type"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["time_hours", "boundaries"],
+  "additionalProperties": false
+}

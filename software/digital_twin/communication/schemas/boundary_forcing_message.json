@@ -5,8 +5,8 @@
   "type": "object",
   "properties": {
     "timestamp": { "type": "string", "format": "date-time" },
-    "time_days": { "type": "number" },
+    "time_hours": { "type": "number" },
     "Ts": { "type": "number", "description": "Surface temperature at 0m depth" }
   },
-  "required": ["time_days", "Ts"]
+  "required": ["time_hours", "Ts"]
 }

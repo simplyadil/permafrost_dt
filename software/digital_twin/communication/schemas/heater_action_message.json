@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "HeaterActionMessage",
+  "description": "Recorded heater action emitted by the control loop.",
+  "type": "object",
+  "properties": {
+    "timestamp": { "type": "string", "format": "date-time" },
+    "time_hours": { "type": "number" },
+    "action": { "type": "string" },
+    "setpoint": { "type": ["number", "null"] },
+    "triggered": { "type": "boolean" },
+    "status": { "type": "string" },
+    "source": { "type": "string" },
+    "reason": { "type": "string" }
+  },
+  "required": [
+    "time_hours",
+    "action",
+    "setpoint",
+    "triggered",
+    "status",
+    "source",
+    "reason"
+  ],
+  "additionalProperties": false
+}

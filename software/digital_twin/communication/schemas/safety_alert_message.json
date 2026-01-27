@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SafetyAlertMessage",
+  "description": "Safety monitoring status and alert payload.",
+  "type": "object",
+  "properties": {
+    "timestamp": { "type": "string", "format": "date-time" },
+    "time_hours": { "type": "number" },
+    "limit_radius_m": { "type": "number" },
+    "measured_radius_m": { "type": ["number", "null"] },
+    "forecast_radius_m": { "type": ["number", "null"] },
+    "triggered": { "type": "boolean" },
+    "status": { "type": "string" },
+    "reason": { "type": "string" },
+    "metric": { "type": "string" }
+  },
+  "required": [
+    "time_hours",
+    "limit_radius_m",
+    "measured_radius_m",
+    "forecast_radius_m",
+    "triggered",
+    "status",
+    "reason",
+    "metric"
+  ],
+  "additionalProperties": false
+}

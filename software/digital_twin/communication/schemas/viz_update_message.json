@@ -18,22 +18,22 @@
     "grid": {
       "type": "object",
       "properties": {
-        "time_days": { "$ref": "#/definitions/numberArray" },
+        "time_hours": { "$ref": "#/definitions/numberArray" },
         "depth_m": { "$ref": "#/definitions/numberArray" },
         "temperature": { "$ref": "#/definitions/matrix" },
         "abs_error": { "$ref": "#/definitions/matrix" }
       },
-      "required": ["time_days", "depth_m"],
+      "required": ["time_hours", "depth_m"],
       "additionalProperties": false
     },
     "seriesEntry": {
       "type": "object",
       "properties": {
         "depth_m": { "type": "number" },
-        "time_days": { "$ref": "#/definitions/numberArray" },
+        "time_hours": { "$ref": "#/definitions/numberArray" },
         "temperature": { "$ref": "#/definitions/numberArray" }
       },
-      "required": ["depth_m", "time_days", "temperature"],
+      "required": ["depth_m", "time_hours", "temperature"],
       "additionalProperties": false
     }
   },
@@ -71,11 +71,11 @@
           "items": {
             "type": "object",
             "properties": {
-              "time_days": { "type": "number" },
+              "time_hours": { "type": "number" },
               "depth_m": { "$ref": "#/definitions/numberArray" },
               "temperature": { "$ref": "#/definitions/numberArray" }
             },
-            "required": ["time_days", "depth_m", "temperature"],
+            "required": ["time_hours", "depth_m", "temperature"],
             "additionalProperties": false
           }
         }
@@ -96,11 +96,11 @@
           "items": {
             "type": "object",
             "properties": {
-              "time_days": { "type": "number" },
+              "time_hours": { "type": "number" },
               "depth_m": { "$ref": "#/definitions/numberArray" },
               "temperature": { "$ref": "#/definitions/numberArray" }
             },
-            "required": ["time_days", "depth_m", "temperature"],
+            "required": ["time_hours", "depth_m", "temperature"],
             "additionalProperties": false
           }
         },
@@ -158,12 +158,12 @@
             "type": "object",
             "properties": {
               "depth_m": { "type": "number" },
-              "time_days": { "$ref": "#/definitions/numberArray" },
+              "time_hours": { "$ref": "#/definitions/numberArray" },
               "fdm": { "$ref": "#/definitions/numberArray" },
               "pinn": { "$ref": "#/definitions/numberArray" },
               "abs_error": { "$ref": "#/definitions/numberArray" }
             },
-            "required": ["depth_m", "time_days", "fdm", "pinn", "abs_error"],
+            "required": ["depth_m", "time_hours", "fdm", "pinn", "abs_error"],
             "additionalProperties": false
           }
         },
@@ -172,13 +172,13 @@
           "items": {
             "type": "object",
             "properties": {
-              "time_days": { "type": "number" },
+              "time_hours": { "type": "number" },
               "depth_m": { "$ref": "#/definitions/numberArray" },
               "fdm": { "$ref": "#/definitions/numberArray" },
               "pinn": { "$ref": "#/definitions/numberArray" },
               "abs_error": { "$ref": "#/definitions/numberArray" }
             },
-            "required": ["time_days", "depth_m", "fdm", "pinn", "abs_error"],
+            "required": ["time_hours", "depth_m", "fdm", "pinn", "abs_error"],
             "additionalProperties": false
           }
         },

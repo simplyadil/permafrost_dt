@@ -5,8 +5,8 @@
   "type": "object",
   "properties": {
     "timestamp": { "type": "string", "format": "date-time" },
-    "time_days": { "type": "number" },
+    "time_hours": { "type": "number" },
     "status": { "type": "string" }
   },
-  "required": ["time_days", "status"]
+  "required": ["time_hours", "status"]
 }

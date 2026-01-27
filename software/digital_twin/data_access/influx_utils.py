@@ -57,14 +57,72 @@ class InfluxHelper:
             self.write_api = None
             self.query_api = None
 
-    def write_temperature(self, time_days, depth, temperature, site="default"):
+    def write_temperature(self, time_hours, depth, temperature, site="default"):
         self.write_depth_series(
             measurement="sensor_temperature",
-            time_days=float(time_days),
+            time_hours=float(time_hours),
             depths=[float(depth)],
             temperatures=[float(temperature)],
             site=site,
         )
+
+    def write_sensor_snapshot_2d(
+        self,
+        *,
+        time_hours: float,
+        sensors: Sequence[dict[str, float | str | None]],
+        site: str = "default",
+    ) -> None:
+        """Write a 2D sensor snapshot with per-sensor coordinates."""
+
+        if not sensors:
+            return
+
+        if self.write_api is None:  # pragma: no cover - runtime fallback
+            self.logger.warning("Influx write skipped (no client available) for measurement sensor_temperature_2d")
+            return
+
+        timestamp = datetime.datetime.utcnow()
+        records = []
+        for sensor in sensors:
+            sensor_id = str(sensor.get("sensor_id", "unknown"))
+            temperature = sensor.get("temperature")
+            x_m = sensor.get("x_m")
+            z_m = sensor.get("z_m")
+            y_m = sensor.get("y_m")
+
+            if temperature is None or x_m is None or z_m is None:
+                continue
+
+            point = (
+                Point("sensor_temperature_2d")
+                .tag("site_id", site)
+                .tag("sensor_id", sensor_id)
+                .field("temperature", float(temperature))
+                .field("time_hours", float(time_hours))
+                .field("x_m", float(x_m))
+                .field("z_m", float(z_m))
+            )
+            if y_m is not None:
+                point = point.field("y_m", float(y_m))
+            records.append(point.time(timestamp, write_precision=WritePrecision.NS))
+
+        if not records:
+            return
+
+        try:
+            self.write_api.write(bucket=self.bucket, record=records)
+        except Exception as exc:  # pragma: no cover - runtime infra
+            self.logger.error("Error writing sensor snapshot to InfluxDB: %s", exc)
+            return
+
+        if "sensor_temperature_2d" not in self._logged_measurements:
+            self.logger.info(
+                "sensor_temperature_2d write complete (t=%.2fh, sensors=%d)",
+                float(time_hours),
+                len(records),
+            )
+            self._logged_measurements.add("sensor_temperature_2d")
 
     def query_temperature(self, site="default", depth=None, limit=100):
         query = f'''
@@ -94,7 +152,7 @@ class InfluxHelper:
     def write_model_temperature(
         self,
         measurement: str,
-        time_days: float,
+        time_hours: float,
         depth: float,
         temperature: float,
         *,
@@ -103,7 +161,7 @@ class InfluxHelper:
     ) -> None:
         self.write_depth_series(
             measurement=measurement,
-            time_days=time_days,
+            time_hours=time_hours,
             depths=[depth],
             temperatures=[temperature],
             site=site,
@@ -114,7 +172,7 @@ class InfluxHelper:
         self,
         *,
         measurement: str,
-        time_days: float,
+        time_hours: float,
         depths: Sequence[float],
         temperatures: Sequence[float],
         site: str = "default",
@@ -142,7 +200,7 @@ class InfluxHelper:
             point = (
                 point.tag("depth", f"{float(depth):.1f}m")
                 .field("temperature", float(temperature))
-                .field("time_days", float(time_days))
+                .field("time_hours", float(time_hours))
                 .field("depth_m", float(depth))
                 .time(timestamp, write_precision=WritePrecision.NS)
             )
@@ -160,9 +218,9 @@ class InfluxHelper:
             max_temp = max(values)
             mean_temp = fmean(values)
             self.logger.info(
-                "%s write complete (t=%.2fd, depths=%d, min=%.2f°C, max=%.2f°C, mean=%.2f°C)",
+                "%s write complete (t=%.2fh, depths=%d, min=%.2f°C, max=%.2f°C, mean=%.2f°C)",
                 measurement,
-                float(time_days),
+                float(time_hours),
                 len(values),
                 min_temp,
                 max_temp,
@@ -213,10 +271,215 @@ class InfluxHelper:
         except Exception as exc:  # pragma: no cover - runtime infra
             self.logger.error("Error writing inversion parameters to InfluxDB: %s", exc)
 
+    def write_thaw_front_metrics(
+        self,
+        *,
+        time_hours: float,
+        radius_max_m: float | None,
+        radius_avg_m: float | None,
+        points: Sequence[dict[str, float]],
+        site: str = "default",
+    ) -> None:
+        """Persist thaw front metrics and representative points."""
+
+        if self.write_api is None:  # pragma: no cover - runtime fallback
+            self.logger.warning("Influx write skipped (no client available) for measurement thaw_front")
+            return
+
+        timestamp = datetime.datetime.utcnow()
+
+        metrics = (
+            Point("thaw_front_metrics")
+            .tag("site_id", site)
+            .field("time_hours", float(time_hours))
+            .field("radius_max_m", float(radius_max_m) if radius_max_m is not None else float("nan"))
+            .field("radius_avg_m", float(radius_avg_m) if radius_avg_m is not None else float("nan"))
+            .time(timestamp, write_precision=WritePrecision.NS)
+        )
+
+        records = [metrics]
+        for point in points:
+            x_m = point.get("x_m")
+            z_m = point.get("z_m")
+            if x_m is None or z_m is None:
+                continue
+            record = (
+                Point("thaw_front_points")
+                .tag("site_id", site)
+                .field("time_hours", float(time_hours))
+                .field("x_m", float(x_m))
+                .field("z_m", float(z_m))
+                .time(timestamp, write_precision=WritePrecision.NS)
+            )
+            records.append(record)
+
+        try:
+            self.write_api.write(bucket=self.bucket, record=records)
+        except Exception as exc:  # pragma: no cover - runtime infra
+            self.logger.error("Error writing thaw front data to InfluxDB: %s", exc)
+            return
+
+        if "thaw_front_metrics" not in self._logged_measurements:
+            self.logger.info(
+                "thaw_front_metrics write complete (t=%.2fh, points=%d)",
+                float(time_hours),
+                len(points),
+            )
+            self._logged_measurements.add("thaw_front_metrics")
+
+    def write_fem_forecast_metrics(
+        self,
+        *,
+        time_hours: float,
+        horizon_hours: float,
+        radius_max_m: float | None,
+        radius_avg_m: float | None,
+        points: Sequence[dict[str, float]],
+        site: str = "default",
+    ) -> None:
+        """Persist FEM forecast metrics and representative points."""
+
+        if self.write_api is None:  # pragma: no cover - runtime fallback
+            self.logger.warning("Influx write skipped (no client available) for measurement fem_forecast")
+            return
+
+        timestamp = datetime.datetime.utcnow()
+        metrics = (
+            Point("fem_forecast_metrics")
+            .tag("site_id", site)
+            .field("time_hours", float(time_hours))
+            .field("horizon_hours", float(horizon_hours))
+            .field("radius_max_m", float(radius_max_m) if radius_max_m is not None else float("nan"))
+            .field("radius_avg_m", float(radius_avg_m) if radius_avg_m is not None else float("nan"))
+            .time(timestamp, write_precision=WritePrecision.NS)
+        )
+
+        records = [metrics]
+        for point in points:
+            x_m = point.get("x_m")
+            z_m = point.get("z_m")
+            if x_m is None or z_m is None:
+                continue
+            record = (
+                Point("fem_forecast_points")
+                .tag("site_id", site)
+                .field("time_hours", float(time_hours))
+                .field("horizon_hours", float(horizon_hours))
+                .field("x_m", float(x_m))
+                .field("z_m", float(z_m))
+                .time(timestamp, write_precision=WritePrecision.NS)
+            )
+            records.append(record)
+
+        try:
+            self.write_api.write(bucket=self.bucket, record=records)
+        except Exception as exc:  # pragma: no cover - runtime infra
+            self.logger.error("Error writing FEM forecast data to InfluxDB: %s", exc)
+            return
+
+        if "fem_forecast_metrics" not in self._logged_measurements:
+            self.logger.info(
+                "fem_forecast_metrics write complete (t=%.2fh, points=%d)",
+                float(time_hours),
+                len(points),
+            )
+            self._logged_measurements.add("fem_forecast_metrics")
+
+    def write_safety_alert(
+        self,
+        *,
+        time_hours: float,
+        limit_radius_m: float,
+        measured_radius_m: float | None,
+        forecast_radius_m: float | None,
+        triggered: bool,
+        reason: str,
+        metric: str,
+        site: str = "default",
+    ) -> None:
+        """Persist safety alert status for downstream monitoring."""
+
+        if self.write_api is None:  # pragma: no cover - runtime fallback
+            self.logger.warning("Influx write skipped (no client available) for measurement safety_alerts")
+            return
+
+        timestamp = datetime.datetime.utcnow()
+        record = (
+            Point("safety_alerts")
+            .tag("site_id", site)
+            .tag("status", "alert" if triggered else "ok")
+            .tag("reason", reason)
+            .tag("metric", metric)
+            .field("time_hours", float(time_hours))
+            .field("limit_radius_m", float(limit_radius_m))
+            .field("measured_radius_m", float(measured_radius_m) if measured_radius_m is not None else float("nan"))
+            .field("forecast_radius_m", float(forecast_radius_m) if forecast_radius_m is not None else float("nan"))
+            .field("triggered", bool(triggered))
+            .time(timestamp, write_precision=WritePrecision.NS)
+        )
+
+        try:
+            self.write_api.write(bucket=self.bucket, record=[record])
+        except Exception as exc:  # pragma: no cover - runtime infra
+            self.logger.error("Error writing safety alerts to InfluxDB: %s", exc)
+            return
+
+        if "safety_alerts" not in self._logged_measurements:
+            self.logger.info(
+                "safety_alerts write complete (t=%.2fh, status=%s)",
+                float(time_hours),
+                "alert" if triggered else "ok",
+            )
+            self._logged_measurements.add("safety_alerts")
+
+    def write_heater_action(
+        self,
+        *,
+        time_hours: float,
+        action: str,
+        setpoint: float | None,
+        triggered: bool,
+        reason: str,
+        source: str,
+        site: str = "default",
+    ) -> None:
+        """Persist heater actuation commands/actions."""
+
+        if self.write_api is None:  # pragma: no cover - runtime fallback
+            self.logger.warning("Influx write skipped (no client available) for measurement heater_actions")
+            return
+
+        timestamp = datetime.datetime.utcnow()
+        record = (
+            Point("heater_actions")
+            .tag("site_id", site)
+            .tag("action", action)
+            .tag("source", source)
+            .tag("reason", reason)
+            .field("time_hours", float(time_hours))
+            .field("setpoint", float(setpoint) if setpoint is not None else float("nan"))
+            .field("triggered", bool(triggered))
+            .time(timestamp, write_precision=WritePrecision.NS)
+        )
+
+        try:
+            self.write_api.write(bucket=self.bucket, record=[record])
+        except Exception as exc:  # pragma: no cover - runtime infra
+            self.logger.error("Error writing heater actions to InfluxDB: %s", exc)
+            return
+
+        if "heater_actions" not in self._logged_measurements:
+            self.logger.info(
+                "heater_actions write complete (t=%.2fh, action=%s)",
+                float(time_hours),
+                action,
+            )
+            self._logged_measurements.add("heater_actions")
+
     def write_boundary_flux(
         self,
         *,
-        time_days: float,
+        time_hours: float,
         q_surface: float,
         q_bottom: float,
         site: str = "default",
@@ -231,7 +494,7 @@ class InfluxHelper:
         record = (
             Point("boundary_flux")
             .tag("site_id", site)
-            .field("time_days", float(time_days))
+            .field("time_hours", float(time_hours))
             .field("q_surface", float(q_surface))
             .field("q_bottom", float(q_bottom))
             .time(timestamp, write_precision=WritePrecision.NS)
@@ -372,6 +635,118 @@ class InfluxHelper:
 
         return self._query_measurement(
             "pinn_inversion",
+            site=site,
+            limit=limit,
+            range_start=range_start,
+        )
+
+    def query_sensor_temperature_2d(
+        self,
+        *,
+        site: str = "default",
+        limit: int = 5000,
+        range_start: str = "-6h",
+    ) -> pd.DataFrame:
+        """Fetch the latest 2D sensor snapshots."""
+
+        return self._query_measurement(
+            "sensor_temperature_2d",
+            site=site,
+            limit=limit,
+            range_start=range_start,
+        )
+
+    def query_thaw_front_metrics(
+        self,
+        *,
+        site: str = "default",
+        limit: int = 1000,
+        range_start: str = "-12h",
+    ) -> pd.DataFrame:
+        """Fetch thaw-front radius metrics."""
+
+        return self._query_measurement(
+            "thaw_front_metrics",
+            site=site,
+            limit=limit,
+            range_start=range_start,
+        )
+
+    def query_thaw_front_points(
+        self,
+        *,
+        site: str = "default",
+        limit: int = 5000,
+        range_start: str = "-12h",
+    ) -> pd.DataFrame:
+        """Fetch thaw-front point geometry."""
+
+        return self._query_measurement(
+            "thaw_front_points",
+            site=site,
+            limit=limit,
+            range_start=range_start,
+        )
+
+    def query_fem_forecast_metrics(
+        self,
+        *,
+        site: str = "default",
+        limit: int = 1000,
+        range_start: str = "-12h",
+    ) -> pd.DataFrame:
+        """Fetch FEM forecast metrics."""
+
+        return self._query_measurement(
+            "fem_forecast_metrics",
+            site=site,
+            limit=limit,
+            range_start=range_start,
+        )
+
+    def query_fem_forecast_points(
+        self,
+        *,
+        site: str = "default",
+        limit: int = 5000,
+        range_start: str = "-12h",
+    ) -> pd.DataFrame:
+        """Fetch FEM forecast point geometry."""
+
+        return self._query_measurement(
+            "fem_forecast_points",
+            site=site,
+            limit=limit,
+            range_start=range_start,
+        )
+
+    def query_safety_alerts(
+        self,
+        *,
+        site: str = "default",
+        limit: int = 1000,
+        range_start: str = "-12h",
+    ) -> pd.DataFrame:
+        """Fetch safety alert records."""
+
+        return self._query_measurement(
+            "safety_alerts",
+            site=site,
+            limit=limit,
+            range_start=range_start,
+        )
+
+    def query_heater_actions(
+        self,
+        *,
+        site: str = "default",
+        limit: int = 1000,
+        range_start: str = "-12h",
+    ) -> pd.DataFrame:
+        """Fetch heater action records."""
+
+        return self._query_measurement(
+            "heater_actions",
             site=site,
             limit=limit,
             range_start=range_start,

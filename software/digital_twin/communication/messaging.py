@@ -24,6 +24,9 @@ class RabbitMQConfig:
 
     host: str = "localhost"
     queue: str = ""
+    exchange: Optional[str] = None
+    exchange_type: str = "fanout"
+    routing_key: str = ""
     schema_path: Optional[Path | str] = None
     username: str = "permafrost"
     password: str = "permafrost"
@@ -48,13 +51,16 @@ class RabbitMQClient:
     """Unified interface for publishing to and consuming from RabbitMQ queues."""
 
     def __init__(self, config: RabbitMQConfig) -> None:
-        if not config.queue:
-            raise ValueError("RabbitMQ queue must be provided.")
+        if not config.queue and not config.exchange:
+            raise ValueError("RabbitMQ queue or exchange must be provided.")
 
         self.logger = get_logger("RabbitMQClient")
         self.config = config
         self.host = config.host
         self.queue = config.queue
+        self.exchange = config.exchange
+        self.exchange_type = config.exchange_type
+        self.routing_key = config.routing_key or ""
         self.connection: Optional[pika.BlockingConnection] = None
         self.channel: Optional[BlockingChannel] = None
         self.schema = self._load_schema(config.schema_path)
@@ -87,7 +93,20 @@ class RabbitMQClient:
                 pika.ConnectionParameters(host=self.host, credentials=credentials, heartbeat=600)
             )
             self.channel = self.connection.channel()
-            self.channel.queue_declare(queue=self.queue, durable=True)
+            if self.exchange:
+                self.channel.exchange_declare(
+                    exchange=self.exchange,
+                    exchange_type=self.exchange_type,
+                    durable=True,
+                )
+            if self.queue:
+                self.channel.queue_declare(queue=self.queue, durable=True)
+                if self.exchange:
+                    self.channel.queue_bind(
+                        queue=self.queue,
+                        exchange=self.exchange,
+                        routing_key=self.routing_key,
+                    )
         except Exception as exc:  # pragma: no cover - requires broker
             self.logger.error("Connection error: %s", exc)
             raise
@@ -116,7 +135,8 @@ class RabbitMQClient:
         try:
             jsonschema.validate(instance=message, schema=self.schema)
         except jsonschema.exceptions.ValidationError as exc:
-            self.logger.error("Rejected message for %s: %s", self.queue, exc.message)
+            target = self.queue or self.exchange or "unknown"
+            self.logger.error("Rejected message for %s: %s", target, exc.message)
             raise
 
     # ------------------------------------------------------
@@ -132,14 +152,17 @@ class RabbitMQClient:
             raise RuntimeError("Channel unavailable. Did connect() succeed?")
 
         try:
+            exchange = self.exchange or ""
+            routing_key = self.routing_key if self.exchange else self.queue
             self.channel.basic_publish(
-                exchange="",
-                routing_key=self.queue,
+                exchange=exchange,
+                routing_key=routing_key,
                 body=json.dumps(message),
                 properties=pika.BasicProperties(delivery_mode=2),
             )
         except Exception as exc:  # pragma: no cover - requires broker
-            self.logger.error("Failed to publish message to %s: %s", self.queue, exc)
+            target = self.queue or self.exchange or "unknown"
+            self.logger.error("Failed to publish message to %s: %s", target, exc)
             raise
 
     # ------------------------------------------------------
@@ -150,6 +173,8 @@ class RabbitMQClient:
 
         self.connect()
 
+        if not self.queue:
+            raise RuntimeError("Queue name required for consuming messages.")
         if self.channel is None:  # pragma: no cover - defensive
             raise RuntimeError("Channel unavailable. Did connect() succeed?")
 

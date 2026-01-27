@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "FEMForecastMessage",
+  "description": "FEM forecast output message for the 2D thaw-front twin.",
+  "type": "object",
+  "properties": {
+    "timestamp": { "type": "string", "format": "date-time" },
+    "time_hours": { "type": "number" },
+    "horizon_hours": { "type": "number" },
+    "status": { "type": "string" },
+    "radius_max_m": { "type": ["number", "null"] },
+    "radius_avg_m": { "type": ["number", "null"] },
+    "points": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "x_m": { "type": "number" },
+          "z_m": { "type": "number" }
+        },
+        "required": ["x_m", "z_m"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["time_hours", "horizon_hours", "status", "radius_max_m", "radius_avg_m", "points"],
+  "additionalProperties": false
+}
