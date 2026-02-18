@@ -190,6 +190,6 @@ class RabbitMQClient:
                 if not auto_ack:
                     ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
 
-        self.channel.basic_qos(prefetch_count=1)
+        self.channel.basic_qos(prefetch_count=10)
         self.channel.basic_consume(queue=self.queue, on_message_callback=_callback, auto_ack=auto_ack)
         self.channel.start_consuming()

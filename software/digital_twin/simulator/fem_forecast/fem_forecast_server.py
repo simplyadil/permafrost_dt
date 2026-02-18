@@ -138,6 +138,12 @@ class FEMForecastServer:
             )
             start_time = datetime.utcnow()
             result = self._run_forecast(msg)
+            if result.radius_max_m is None or result.radius_avg_m is None:
+                self.logger.warning(
+                    "FEM forecast returned None metrics (t=%.2fh, points=%d). Publishing anyway.",
+                    time_hours,
+                    len(result.points),
+                )
             payload = {
                 "timestamp": msg.get("timestamp") or datetime.utcnow().isoformat(),
                 "time_hours": time_hours,
@@ -164,7 +170,7 @@ class FEMForecastServer:
                 elapsed,
             )
         except Exception as exc:
-            self.logger.error("FEM forecast failed: %s", exc, exc_info=True)
+            self.logger.error("FEM forecast FAILED: %s", exc, exc_info=True)
 
     def setup(self) -> None:
         if self.mq_in is None:

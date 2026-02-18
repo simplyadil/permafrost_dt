@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Callable, Dict
 
 from software.digital_twin.communication.messaging import RabbitMQConfig
@@ -126,6 +127,9 @@ def create_thaw_front_reconstruction_server(
         input_queue=input_queue,
         output_queue=output_queue,
         thaw_threshold_c=float(thaw_cfg.get("thaw_threshold_c", 0.0)),
+        contour_grid_r=int(thaw_cfg.get("contour_grid_r", 120)),
+        contour_grid_z=int(thaw_cfg.get("contour_grid_z", 150)),
+        primary_metric_source=str(thaw_cfg.get("primary_metric_source", "contour")),
         site_id=str(thaw_cfg.get("site_id", "default")),
     )
 
@@ -137,6 +141,19 @@ def create_fem_forecast_server(
 ):
     input_queue = str(fem_cfg.get("input_queue", fem_module.BOUNDARY_QUEUE))
     output_queue = str(fem_cfg.get("output_queue", fem_module.FORECAST_QUEUE))
+    
+    # Resolve mesh_dir to absolute path if relative
+    mesh_dir_config = fem_cfg.get("mesh_dir")
+    if mesh_dir_config:
+        mesh_path = Path(str(mesh_dir_config))
+        if not mesh_path.is_absolute():
+            # Try relative to the repo root
+            repo_root = Path(__file__).resolve().parents[2]
+            mesh_path = repo_root / mesh_path
+        mesh_dir = str(mesh_path)
+    else:
+        mesh_dir = None
+    
     return fem_module.FEMForecastServer(
         influx_config=influx_config,
         input_config=_rabbit_config(rabbit_cfg, fem_module.BOUNDARY_SCHEMA, queue=input_queue),
@@ -145,7 +162,7 @@ def create_fem_forecast_server(
         output_queue=output_queue,
         horizon_hours=float(fem_cfg.get("horizon_hours", 1.0)),
         site_id=str(fem_cfg.get("site_id", "default")),
-        mesh_dir=fem_cfg.get("mesh_dir"),
+        mesh_dir=mesh_dir,
         node_file=str(fem_cfg.get("node_file", "DT_model_nodes.txt")),
         element_file=str(fem_cfg.get("element_file", "DT_model_elements.txt")),
         edge_sets=fem_cfg.get("edge_sets", {}) if isinstance(fem_cfg.get("edge_sets"), dict) else {},

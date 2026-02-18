@@ -77,7 +77,6 @@ def main() -> None:
         "viz_dashboard": lambda: make_viz_dashboard_runner(),
     }
 
-    # Placeholder list for the new 2D DT services:
     # observation_ingestion_2d
     # boundary_condition_builder
     # thaw_front_reconstruction
@@ -85,15 +84,15 @@ def main() -> None:
     # fem_forecast
     # safety_monitor
     # heater_actuation
-    # 
     # viz_dashboard
+
     services_to_start: List[str] = [
         "observation_ingestion_2d",
         "boundary_condition_builder",
         "thaw_front_reconstruction",
         "fem_forecast",
-        "safety_monitor",
-        "heater_actuation",
+        # "safety_monitor",
+        # "heater_actuation",
         "viz_dashboard",
     ]
 

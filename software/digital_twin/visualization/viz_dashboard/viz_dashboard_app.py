@@ -230,10 +230,18 @@ def _interpolate_temperature_field(sensors: pd.DataFrame, grid_resolution: int =
     except Exception:
         T = griddata(points, temp, (R, Z), method="linear")
 
+    if T is None:
+        return None
+    if np.isnan(T).any():
+        T_near = griddata(points, temp, (R, Z), method="nearest")
+        T = np.where(np.isnan(T), T_near, T)
+    if np.isnan(T).any():
+        T = np.nan_to_num(T, nan=float(np.nanmin(temp)))
+
     return R, Z, T
 
 
-def _temperature_contour(sensors: pd.DataFrame, temp_range: tuple[float, float] = (-2.0, 30.0)) -> go.Figure | None:
+def _temperature_contour(sensors: pd.DataFrame, temp_range: tuple[float, float] = (-1.0, 60.0)) -> go.Figure | None:
     latest = _latest_snapshot(sensors)
     field = _interpolate_temperature_field(latest)
     if field is None:
@@ -244,22 +252,22 @@ def _temperature_contour(sensors: pd.DataFrame, temp_range: tuple[float, float] 
 
     fig.add_trace(
         go.Contour(
-            x=R[0, :],
-            y=Z[:, 0],
+            x=R[0, :] * 1000.0,
+            y=Z[:, 0] * 1000.0,
             z=T,
-            colorscale="RdBu_r",
+            colorscale="Jet",
             zmin=temp_range[0],
             zmax=temp_range[1],
             zmid=0.0,
-            colorbar={"title": "Temperature (C)"},
+            colorbar={"title": "Temperature (C)", "tick0": temp_range[0], "dtick": 5},
             contours={"showlines": False},
         )
     )
 
     fig.add_trace(
         go.Contour(
-            x=R[0, :],
-            y=Z[:, 0],
+            x=R[0, :] * 1000.0,
+            y=Z[:, 0] * 1000.0,
             z=T,
             showscale=False,
             contours={"start": 0.0, "end": 0.0, "coloring": "lines"},
@@ -273,13 +281,13 @@ def _temperature_contour(sensors: pd.DataFrame, temp_range: tuple[float, float] 
         latest["x_m"] = latest["x_m"].astype(float).abs()
         fig.add_trace(
             go.Scatter(
-                x=latest["x_m"],
-                y=latest["z_m"],
+                x=latest["x_m"] * 1000.0,
+                y=latest["z_m"] * 1000.0,
                 mode="markers",
                 marker={
                     "size": 8,
                     "color": latest["temperature"],
-                    "colorscale": "RdBu_r",
+                    "colorscale": "Jet",
                     "cmin": temp_range[0],
                     "cmax": temp_range[1],
                     "line": {"width": 0.5, "color": "#0f172a"},
@@ -293,9 +301,9 @@ def _temperature_contour(sensors: pd.DataFrame, temp_range: tuple[float, float] 
     fig.add_shape(
         type="rect",
         x0=0.0,
-        x1=THERMOSYPHON_RADIUS_M,
+        x1=THERMOSYPHON_RADIUS_M * 1000.0,
         y0=0.0,
-        y1=DOMAIN_DEPTH_M,
+        y1=DOMAIN_DEPTH_M * 1000.0,
         fillcolor="#111827",
         opacity=0.6,
         line_width=0,
@@ -304,70 +312,136 @@ def _temperature_contour(sensors: pd.DataFrame, temp_range: tuple[float, float] 
 
     fig.update_layout(
         title="Temperature field with thaw front (0 C)",
-        xaxis_title="Radial distance (m)",
-        yaxis_title="Depth (m)",
+        xaxis_title="Radial distance (mm)",
+        yaxis_title="Depth (mm)",
         height=440,
         margin=dict(l=40, r=20, t=50, b=40),
     )
     fig.update_yaxes(autorange="reversed")
-    fig.update_xaxes(range=[0, DOMAIN_RADIUS_M])
-    fig.update_yaxes(range=[DOMAIN_DEPTH_M, 0.0])
+    fig.update_xaxes(range=[0, DOMAIN_RADIUS_M * 1000.0])
+    fig.update_yaxes(range=[DOMAIN_DEPTH_M * 1000.0, 0.0])
     return fig
 
 
-def _front_geometry_plot(thaw_points: pd.DataFrame, forecast_points: pd.DataFrame, limit_m: float) -> go.Figure | None:
+def _front_geometry_plot(
+    thaw_points: pd.DataFrame,
+    forecast_points: pd.DataFrame,
+    limit_m: float,
+    sensors: pd.DataFrame | None = None,
+) -> go.Figure | None:
     if (thaw_points is None or thaw_points.empty) and (forecast_points is None or forecast_points.empty):
         return None
 
     fig = go.Figure()
-    if thaw_points is not None and not thaw_points.empty:
-        latest_time = thaw_points["time_hours"].max()
-        df = thaw_points[thaw_points["time_hours"] == latest_time].copy()
-        if "x_m" in df.columns:
-            df["x_m"] = df["x_m"].astype(float).abs()
+
+    def _densify_front(points: pd.DataFrame, depth_samples: int = 120) -> pd.DataFrame:
+        if points is None or points.empty or "x_m" not in points.columns or "z_m" not in points.columns:
+            return pd.DataFrame()
+        df = points.dropna(subset=["x_m", "z_m"]).copy()
+        if df.empty:
+            return pd.DataFrame()
+        df["x_m"] = df["x_m"].astype(float).abs()
+        df["z_m"] = df["z_m"].astype(float)
+        df = df.sort_values("z_m")
+        df = df.drop_duplicates(subset=["z_m"])
+        if len(df) < 2:
+            return df
+        z_min, z_max = float(df["z_m"].min()), float(df["z_m"].max())
+        z_grid = np.linspace(z_min, z_max, depth_samples)
+        x_grid = np.interp(z_grid, df["z_m"].to_numpy(), df["x_m"].to_numpy())
+        return pd.DataFrame({"x_m": x_grid, "z_m": z_grid})
+
+    def _latest_front(points: pd.DataFrame) -> tuple[pd.DataFrame, float | None]:
+        if points is None or points.empty:
+            return pd.DataFrame(), None
+        required = {"time_hours", "x_m", "z_m"}
+        if not required.issubset(points.columns):
+            return pd.DataFrame(), None
+        df = points.copy()
+        df["time_hours"] = _safe_float_series(df["time_hours"])
+        df["x_m"] = _safe_float_series(df["x_m"])
+        df["z_m"] = _safe_float_series(df["z_m"])
+        df = df.dropna(subset=["time_hours", "x_m", "z_m"])
+        if df.empty:
+            return pd.DataFrame(), None
+        latest_time = float(df["time_hours"].max())
+        df = df[np.isclose(df["time_hours"], latest_time, atol=1e-9)].copy()
+        df["x_m"] = df["x_m"].abs()
+        df = df.sort_values("z_m").drop_duplicates(subset=["z_m"])
+        return df, latest_time
+
+    measured_raw, measured_time = _latest_front(thaw_points)
+    measured_dense = _densify_front(measured_raw)
+    measured_plot = measured_dense if not measured_dense.empty else measured_raw
+    if not measured_plot.empty:
         fig.add_trace(
             go.Scatter(
-                x=df["x_m"],
-                y=df["z_m"],
-                mode="lines+markers",
-                line={"color": "#2563eb", "width": 2},
-                name=f"Measured (t={latest_time:.2f}h)",
+                x=measured_plot["x_m"] * 1000.0,
+                y=measured_plot["z_m"] * 1000.0,
+                mode="lines" if len(measured_plot) > 1 else "markers",
+                line={"color": "#2563eb", "width": 3},
+                marker={"size": 8, "color": "#2563eb"},
+                name=f"Measured (t={measured_time:.2f}h)" if measured_time is not None else "Measured",
             )
         )
-    if forecast_points is not None and not forecast_points.empty:
-        latest_time = forecast_points["time_hours"].max()
-        df = forecast_points[forecast_points["time_hours"] == latest_time].copy()
-        if "x_m" in df.columns:
-            df["x_m"] = df["x_m"].astype(float).abs()
+
+    forecast_raw, forecast_time = _latest_front(forecast_points)
+    forecast_dense = _densify_front(forecast_raw)
+    forecast_plot = forecast_dense if not forecast_dense.empty else forecast_raw
+    if not forecast_plot.empty:
         fig.add_trace(
             go.Scatter(
-                x=df["x_m"],
-                y=df["z_m"],
-                mode="lines+markers",
-                line={"color": "#dc2626", "width": 2, "dash": "dash"},
-                name=f"Forecast (t={latest_time:.2f}h)",
+                x=forecast_plot["x_m"] * 1000.0,
+                y=forecast_plot["z_m"] * 1000.0,
+                mode="lines" if len(forecast_plot) > 1 else "markers",
+                line={"color": "#dc2626", "width": 3, "dash": "dash"},
+                marker={"size": 8, "color": "#dc2626"},
+                name=f"Forecast (t={forecast_time:.2f}h)" if forecast_time is not None else "Forecast",
             )
         )
 
     fig.add_vline(
-        x=limit_m,
+        x=limit_m * 1000.0,
         line_width=3,
         line_color="#dc2626",
         annotation_text="Safety limit",
         annotation_position="top right",
     )
 
+    max_x_mm = DOMAIN_RADIUS_M * 1000.0
+    for frame in (thaw_points, forecast_points):
+        if frame is not None and not frame.empty and "x_m" in frame.columns:
+            try:
+                max_x_mm = max(max_x_mm, float(frame["x_m"].abs().max()) * 1000.0 * 1.1)
+            except (TypeError, ValueError):
+                pass
+
     fig.update_layout(
         title="Thaw-front evolution and forecast",
-        xaxis_title="Radial distance (m)",
-        yaxis_title="Depth (m)",
+        xaxis_title="Radial distance (mm)",
+        yaxis_title="Depth (mm)",
         height=440,
-        margin=dict(l=40, r=20, t=50, b=40),
+        margin=dict(l=50, r=30, t=50, b=40),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
     )
-    fig.update_yaxes(autorange="reversed")
-    fig.update_xaxes(range=[0, DOMAIN_RADIUS_M])
-    fig.update_yaxes(range=[DOMAIN_DEPTH_M, 0.0])
+    diag_parts: list[str] = []
+    if measured_time is not None:
+        diag_parts.append(f"Measured points: {len(measured_raw)} at t={measured_time:.2f}h")
+    if forecast_time is not None:
+        diag_parts.append(f"Forecast points: {len(forecast_raw)} at t={forecast_time:.2f}h")
+    if diag_parts:
+        fig.add_annotation(
+            xref="paper",
+            yref="paper",
+            x=0.01,
+            y=1.08,
+            xanchor="left",
+            showarrow=False,
+            text=" | ".join(diag_parts),
+            font={"size": 11, "color": "#94a3b8"},
+        )
+    fig.update_xaxes(range=[0, max_x_mm])
+    fig.update_yaxes(range=[DOMAIN_DEPTH_M * 1000.0, 0.0], autorange=False)
     return fig
 
 
@@ -383,123 +457,108 @@ def _unified_radius_plot(
     df_measured = thaw_metrics.copy()
     df_measured["time_hours"] = _safe_float_series(df_measured["time_hours"])
     df_measured["radius_max_m"] = _safe_float_series(df_measured["radius_max_m"])
-    df_measured["radius_avg_m"] = _safe_float_series(df_measured["radius_avg_m"])
-    df_measured = df_measured.dropna(subset=["time_hours"])
+    df_measured = df_measured.dropna(subset=["time_hours", "radius_max_m"]).sort_values("time_hours")
 
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    if len(df_measured) > 200:
+        step = max(int(len(df_measured) / 200), 1)
+        df_measured = df_measured.iloc[::step].copy()
 
+    fig = go.Figure()
     fig.add_trace(
         go.Scatter(
             x=df_measured["time_hours"],
             y=df_measured["radius_max_m"],
-            mode="lines+markers",
-            line={"color": "#2563eb", "width": 2},
-            name="Measured r_max",
-        ),
-        secondary_y=False,
-    )
-    fig.add_trace(
-        go.Scatter(
-            x=df_measured["time_hours"],
-            y=df_measured["radius_avg_m"],
             mode="lines",
-            line={"color": "#22d3ee", "width": 1.5},
-            name="Measured r_avg",
-        ),
-        secondary_y=False,
+            line={"color": "#1f77b4", "width": 3},
+            name="Measured r_max",
+            hovertemplate="Time: %{x:.2f}h<br>r_max: %{y:.3f}m<extra></extra>",
+        )
     )
 
-    df_forecast = pd.DataFrame()
     if forecast_metrics is not None and not forecast_metrics.empty and "horizon_hours" in forecast_metrics.columns:
         df_forecast = forecast_metrics.copy()
         df_forecast["time_hours"] = _safe_float_series(df_forecast["time_hours"])
         df_forecast["horizon_hours"] = _safe_float_series(df_forecast["horizon_hours"])
         df_forecast["radius_max_m"] = _safe_float_series(df_forecast["radius_max_m"])
-        df_forecast["radius_avg_m"] = _safe_float_series(df_forecast["radius_avg_m"])
-        df_forecast = df_forecast.dropna(subset=["time_hours", "horizon_hours"])
+        df_forecast = df_forecast.dropna(subset=["time_hours", "horizon_hours", "radius_max_m"])
         df_forecast["time_forecast"] = df_forecast["time_hours"] + df_forecast["horizon_hours"]
+        df_forecast = df_forecast.sort_values("time_forecast")
 
         fig.add_trace(
             go.Scatter(
                 x=df_forecast["time_forecast"],
                 y=df_forecast["radius_max_m"],
                 mode="lines",
-                line={"color": "#dc2626", "width": 2, "dash": "dash"},
+                line={"color": "#d62728", "width": 3, "dash": "dash"},
                 name="Forecast r_max",
-            ),
-            secondary_y=False,
-        )
-        fig.add_trace(
-            go.Scatter(
-                x=df_forecast["time_forecast"],
-                y=df_forecast["radius_avg_m"],
-                mode="lines",
-                line={"color": "#f97316", "width": 1.5, "dash": "dash"},
-                name="Forecast r_avg",
-            ),
-            secondary_y=False,
+                hovertemplate="Forecast: %{x:.2f}h<br>r_max: %{y:.3f}m<extra></extra>",
+            )
         )
 
     fig.add_hline(
         y=limit_m,
-        line_width=3,
-        line_color="#dc2626",
-        annotation_text="SAFETY LIMIT",
-        annotation_position="bottom right",
+        line_width=4,
+        line_color="#b91c1c",
+        annotation_text=f"SAFETY LIMIT ({limit_m:.3f}m)",
+        annotation_position="top right",
     )
 
-    measured_max = df_measured["radius_max_m"].max(skipna=True)
-    if not np.isfinite(measured_max):
-        measured_max = limit_m
-    y_max = max(limit_m * 1.2, float(measured_max) * 1.2)
+    measured_max = float(df_measured["radius_max_m"].max())
+    y_max = max(limit_m * 1.3, measured_max * 1.2)
     fig.add_hrect(
         y0=limit_m,
         y1=y_max,
-        fillcolor="rgba(220,38,38,0.12)",
+        fillcolor="rgba(239,68,68,0.12)",
         line_width=0,
     )
 
-    if heater_actions is not None and not heater_actions.empty and "time_hours" in heater_actions.columns:
-        for _, row in heater_actions.iterrows():
-            try:
-                action_time = float(row["time_hours"])
-            except (TypeError, ValueError):
-                continue
-            action = str(row.get("action", "")).lower()
-            if action == "stop":
-                fig.add_vline(x=action_time, line_color="#ef4444", line_width=2, line_dash="dot")
-            elif action == "hold":
-                fig.add_vline(x=action_time, line_color="#38bdf8", line_width=1, line_dash="dot")
-            elif action:
-                fig.add_vline(x=action_time, line_color="#a855f7", line_width=1)
-
-    if df_measured["radius_max_m"].notna().sum() > 2:
-        dr_dt = np.gradient(df_measured["radius_max_m"], df_measured["time_hours"])
-        fig.add_trace(
-            go.Scatter(
-                x=df_measured["time_hours"],
-                y=dr_dt,
-                mode="lines",
-                line={"color": "#7c3aed", "width": 1},
-                name="dr/dt",
-            ),
-            secondary_y=True,
+    latest_time = float(df_measured["time_hours"].iloc[-1])
+    latest_r = float(df_measured["radius_max_m"].iloc[-1])
+    fig.add_trace(
+        go.Scatter(
+            x=[latest_time],
+            y=[latest_r],
+            mode="markers",
+            name="Current r_max",
+            marker=dict(size=14, color="#1f77b4", line=dict(width=2, color="white")),
+            hovertemplate=f"NOW<br>Time: {latest_time:.2f}h<br>r_max: {latest_r:.3f}m<extra></extra>",
         )
+    )
 
     fig.update_layout(
-        title="Thaw radius evolution: measured + forecast",
-        height=420,
-        margin=dict(l=40, r=20, t=50, b=40),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        title="Thaw radius evolution: measured history + forecast",
+        height=520,
+        margin=dict(l=70, r=50, t=70, b=70),
+        legend=dict(
+            x=1.02,
+            y=0.02,
+            xanchor="left",
+            yanchor="bottom",
+            bgcolor="rgba(15,23,42,0.65)",
+            bordercolor="rgba(148,163,184,0.6)",
+            borderwidth=1,
+            font=dict(size=11, color="#e2e8f0"),
+        ),
         hovermode="x unified",
+        plot_bgcolor="rgba(15,23,42,0.08)",
+        paper_bgcolor="rgba(15,23,42,0.02)",
+        font=dict(color="#e2e8f0"),
     )
-    fig.update_xaxes(title_text="Time (hours)")
-    fig.update_yaxes(title_text="Radius (m)", secondary_y=False)
-    fig.update_yaxes(title_text="dr/dt (m/hr)", secondary_y=True)
+    fig.update_xaxes(title_text="Time (hours)", showgrid=True, gridcolor="rgba(148,163,184,0.25)")
+    fig.update_yaxes(
+        title_text="Thaw radius (m)",
+        range=[0, y_max],
+        showgrid=True,
+        gridcolor="rgba(148,163,184,0.25)",
+    )
     return fig
 
 
-def _model_diagnostics_plot(thaw_metrics: pd.DataFrame, forecast_metrics: pd.DataFrame) -> go.Figure | None:
+def _model_diagnostics_plot(
+    thaw_metrics: pd.DataFrame,
+    forecast_metrics: pd.DataFrame,
+    acceptable_error: float = 0.01,
+) -> go.Figure | None:
     if thaw_metrics is None or thaw_metrics.empty or forecast_metrics is None or forecast_metrics.empty:
         return None
 
@@ -535,13 +594,35 @@ def _model_diagnostics_plot(thaw_metrics: pd.DataFrame, forecast_metrics: pd.Dat
             x=merged["time_hours"],
             y=merged["radius_error"],
             mode="lines+markers",
-            line={"color": "#f97316", "width": 2},
-            name="Radius error",
+            line={"color": "#6b7280", "width": 2},
+            name="Forecast error",
         )
     )
-    fig.add_hline(y=0.01, line_color="#facc15", line_dash="dash", annotation_text="1 cm threshold")
+    fig.add_hline(
+        y=acceptable_error,
+        line_color="#22c55e",
+        line_dash="dash",
+        annotation_text=f"Acceptable (<{acceptable_error*1000:.0f} mm)",
+    )
+    max_err = float(merged["radius_error"].max())
+    fig.add_hrect(
+        y0=0,
+        y1=acceptable_error,
+        fillcolor="rgba(34,197,94,0.18)",
+        line_width=0,
+        annotation_text="Good",
+        annotation_position="inside top left",
+    )
+    fig.add_hrect(
+        y0=acceptable_error,
+        y1=max(max_err * 1.1, acceptable_error * 1.5),
+        fillcolor="rgba(239,68,68,0.12)",
+        line_width=0,
+        annotation_text="Poor",
+        annotation_position="inside top left",
+    )
     fig.update_layout(
-        title="Model quality: radius error",
+        title="Forecast error in r_max",
         height=300,
         margin=dict(l=40, r=20, t=40, b=30),
         xaxis_title="Time (hours)",
@@ -632,7 +713,10 @@ def main() -> None:
         forecast_horizon_min = st.slider("Forecast horizon (minutes)", 5, 120, 30, 5)
         if st.button("Refresh now"):
             st.cache_data.clear()
-            st.experimental_rerun()
+            if hasattr(st, "rerun"):
+                st.rerun()
+            else:  # pragma: no cover - backward compatibility
+                st.experimental_rerun()
         st.caption("Tip: increase refresh interval if Influx is slow.")
 
     @st.cache_data(ttl=refresh_seconds)
@@ -778,7 +862,7 @@ def main() -> None:
         else:
             st.info("No sensor snapshots yet.")
     with mid_right:
-        fig = _front_geometry_plot(data["thaw_points"], data["forecast_points"], r_limit)
+        fig = _front_geometry_plot(data["thaw_points"], data["forecast_points"], r_limit, data["sensors"])
         if fig:
             st.plotly_chart(fig, use_container_width=True)
         else:
@@ -808,7 +892,18 @@ def main() -> None:
     with bottom_right:
         if heater_actions is not None and not heater_actions.empty:
             st.subheader("Heater actions")
-            st.dataframe(heater_actions.tail(20), use_container_width=True)
+            display_actions = heater_actions.tail(20).copy()
+            keep_cols = [col for col in ["time_hours", "action", "reason", "setpoint", "triggered"] if col in display_actions.columns]
+            display_actions = display_actions[keep_cols]
+            if "time_hours" in display_actions.columns:
+                display_actions["time_hours"] = display_actions["time_hours"].apply(
+                    lambda val: f"{float(val):.2f}" if val is not None else ""
+                )
+            if "setpoint" in display_actions.columns:
+                display_actions["setpoint"] = display_actions["setpoint"].apply(
+                    lambda val: f"{float(val):.2f}" if val is not None else ""
+                )
+            st.dataframe(display_actions, use_container_width=True, hide_index=True)
         else:
             st.info("No heater actions yet.")
 

@@ -5,9 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import logging.config
-import logging.handlers
 import os
-from pathlib import Path
 from typing import Any, Dict, Optional
 
 
@@ -41,14 +39,7 @@ def _should_enable_json(enable_json: Optional[bool]) -> bool:
     return env_value in {"1", "true", "yes", "on"}
 
 
-def _log_directory(log_dir: Optional[str | Path]) -> Path:
-    if log_dir is not None:
-        return Path(log_dir)
-    env_dir = os.getenv("DT_LOG_DIR")
-    return Path(env_dir) if env_dir else Path("logs")
-
-
-def _build_config(log_dir: Path, enable_json: bool) -> Dict[str, Any]:
+def _build_config(enable_json: bool) -> Dict[str, Any]:
     datefmt = "%Y-%m-%d %H:%M:%S.%f"
     common_format = "%(asctime)s %(levelname)s %(name)s : %(message)s"
 
@@ -72,16 +63,7 @@ def _build_config(log_dir: Path, enable_json: bool) -> Dict[str, Any]:
         "console": {
             "class": "logging.StreamHandler",
             "level": "INFO",
-            "formatter": "console",
-        },
-        "file": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "level": "INFO",
-            "formatter": "json" if enable_json else "standard",
-            "filename": str(log_dir / "digital_twin.log"),
-            "maxBytes": 5 * 1024 * 1024,
-            "backupCount": 3,
-            "encoding": "utf-8",
+            "formatter": "json" if enable_json else "console",
         },
     }
 
@@ -92,14 +74,13 @@ def _build_config(log_dir: Path, enable_json: bool) -> Dict[str, Any]:
         "handlers": handlers,
         "root": {
             "level": "INFO",
-            "handlers": ["console", "file"],
+            "handlers": ["console"],
         },
     }
 
 
 def configure_logging(
     *,
-    log_dir: Optional[str | Path] = None,
     enable_json: Optional[bool] = None,
 ) -> None:
     """Initialise global logging handlers and formatter configuration."""
@@ -108,11 +89,9 @@ def configure_logging(
     if _CONFIGURED:
         return
 
-    log_path = _log_directory(log_dir)
-    log_path.mkdir(parents=True, exist_ok=True)
     json_enabled = _should_enable_json(enable_json)
 
-    config_dict = _build_config(log_path, json_enabled)
+    config_dict = _build_config(json_enabled)
     logging.config.dictConfig(config_dict)
 
     for noisy_logger in ("pika", "urllib3", "asyncio", "influxdb_client"):

@@ -278,6 +278,12 @@ class InfluxHelper:
         radius_max_m: float | None,
         radius_avg_m: float | None,
         points: Sequence[dict[str, float]],
+        contour_found: bool | None = None,
+        contour_state: str | None = None,
+        contour_point_count: int | None = None,
+        proxy_radius_max_m: float | None = None,
+        proxy_radius_avg_m: float | None = None,
+        proxy_point_count: int | None = None,
         site: str = "default",
     ) -> None:
         """Persist thaw front metrics and representative points."""
@@ -296,20 +302,33 @@ class InfluxHelper:
             .field("radius_avg_m", float(radius_avg_m) if radius_avg_m is not None else float("nan"))
             .time(timestamp, write_precision=WritePrecision.NS)
         )
+        if contour_state is not None:
+            metrics = metrics.tag("contour_state", str(contour_state))
+        if contour_found is not None:
+            metrics = metrics.field("contour_found", bool(contour_found))
+        if contour_point_count is not None:
+            metrics = metrics.field("contour_point_count", int(contour_point_count))
+        if proxy_radius_max_m is not None:
+            metrics = metrics.field("proxy_radius_max_m", float(proxy_radius_max_m))
+        if proxy_radius_avg_m is not None:
+            metrics = metrics.field("proxy_radius_avg_m", float(proxy_radius_avg_m))
+        if proxy_point_count is not None:
+            metrics = metrics.field("proxy_point_count", int(proxy_point_count))
 
         records = [metrics]
-        for point in points:
+        for idx, point in enumerate(points, start=1):
             x_m = point.get("x_m")
             z_m = point.get("z_m")
             if x_m is None or z_m is None:
                 continue
+            point_timestamp = timestamp + datetime.timedelta(microseconds=idx)
             record = (
                 Point("thaw_front_points")
                 .tag("site_id", site)
                 .field("time_hours", float(time_hours))
                 .field("x_m", float(x_m))
                 .field("z_m", float(z_m))
-                .time(timestamp, write_precision=WritePrecision.NS)
+                .time(point_timestamp, write_precision=WritePrecision.NS)
             )
             records.append(record)
 
@@ -355,11 +374,12 @@ class InfluxHelper:
         )
 
         records = [metrics]
-        for point in points:
+        for idx, point in enumerate(points, start=1):
             x_m = point.get("x_m")
             z_m = point.get("z_m")
             if x_m is None or z_m is None:
                 continue
+            point_timestamp = timestamp + datetime.timedelta(microseconds=idx)
             record = (
                 Point("fem_forecast_points")
                 .tag("site_id", site)
@@ -367,7 +387,7 @@ class InfluxHelper:
                 .field("horizon_hours", float(horizon_hours))
                 .field("x_m", float(x_m))
                 .field("z_m", float(z_m))
-                .time(timestamp, write_precision=WritePrecision.NS)
+                .time(point_timestamp, write_precision=WritePrecision.NS)
             )
             records.append(record)
 
