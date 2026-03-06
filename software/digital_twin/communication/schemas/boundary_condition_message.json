@@ -21,7 +21,11 @@
         "required": ["boundary_set", "bc_type"],
         "additionalProperties": false
       }
-    }
+    },
+    "include_field": { "type": "boolean", "description": "Capture temperature field snapshot" },
+    "save_field_csv": { "type": "boolean", "description": "Write temperature field to CSV" },
+    "field_csv_dir": { "type": "string", "description": "Directory for field CSV files" },
+    "material_override": { "type": "object", "description": "Optional material property overrides" }
   },
   "required": ["time_hours", "boundaries"],
   "additionalProperties": false

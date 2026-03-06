@@ -169,6 +169,9 @@ def create_fem_forecast_server(
         node_sets=fem_cfg.get("node_sets", {}) if isinstance(fem_cfg.get("node_sets"), dict) else {},
         material=fem_cfg.get("material", {}) if isinstance(fem_cfg.get("material"), dict) else {},
         solver=fem_cfg.get("solver", {}) if isinstance(fem_cfg.get("solver"), dict) else {},
+        save_field_csv_default=fem_cfg.get("save_field_csv_default", True),
+        include_field_default=fem_cfg.get("include_field_default", False),
+        field_csv_dir=fem_cfg.get("field_csv_dir") if isinstance(fem_cfg.get("field_csv_dir"), str) else None,
     )
 
 

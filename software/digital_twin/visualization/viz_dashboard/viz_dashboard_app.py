@@ -241,7 +241,13 @@ def _interpolate_temperature_field(sensors: pd.DataFrame, grid_resolution: int =
     return R, Z, T
 
 
-def _temperature_contour(sensors: pd.DataFrame, temp_range: tuple[float, float] = (-1.0, 60.0)) -> go.Figure | None:
+def _temperature_contour(
+    sensors: pd.DataFrame,
+    temp_range: tuple[float, float] = (-1.0, 60.0),
+    *,
+    title: str = "Temperature field with thaw front (0 C)",
+    marker_name: str = "Sensors",
+) -> go.Figure | None:
     latest = _latest_snapshot(sensors)
     field = _interpolate_temperature_field(latest)
     if field is None:
@@ -292,7 +298,7 @@ def _temperature_contour(sensors: pd.DataFrame, temp_range: tuple[float, float] 
                     "cmax": temp_range[1],
                     "line": {"width": 0.5, "color": "#0f172a"},
                 },
-                name="Sensors",
+                name=marker_name,
                 hovertemplate="Sensor %{text}<br>Temp: %{marker.color:.2f} C<extra></extra>",
                 text=latest.get("sensor_id", ""),
             )
@@ -311,7 +317,7 @@ def _temperature_contour(sensors: pd.DataFrame, temp_range: tuple[float, float] 
     )
 
     fig.update_layout(
-        title="Temperature field with thaw front (0 C)",
+        title=title,
         xaxis_title="Radial distance (mm)",
         yaxis_title="Depth (mm)",
         height=440,
@@ -729,6 +735,11 @@ def main() -> None:
                 limit=max_points,
                 range_start=range_start,
             ),
+            "forecast_temperature": influx.query_fem_temperature_2d(
+                site=site_id,
+                limit=max_points,
+                range_start=range_start,
+            ),
             "thaw_metrics": influx.query_thaw_front_metrics(
                 site=site_id,
                 limit=max_points,
@@ -854,19 +865,29 @@ def main() -> None:
 
     st.divider()
 
-    mid_left, mid_right = st.columns((1.15, 1))
-    with mid_left:
+    temp_left, temp_right = st.columns((1, 1))
+    with temp_left:
         fig = _temperature_contour(data["sensors"])
         if fig:
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("No sensor snapshots yet.")
-    with mid_right:
-        fig = _front_geometry_plot(data["thaw_points"], data["forecast_points"], r_limit, data["sensors"])
-        if fig:
-            st.plotly_chart(fig, use_container_width=True)
+    with temp_right:
+        forecast_field_fig = _temperature_contour(
+            data["forecast_temperature"],
+            title="Forecasted temperature field with thaw front (0 C)",
+            marker_name="Forecast samples",
+        )
+        if forecast_field_fig:
+            st.plotly_chart(forecast_field_fig, use_container_width=True)
         else:
-            st.info("No thaw-front points yet.")
+            st.info("No forecasted temperature field snapshots yet.")
+
+    fig = _front_geometry_plot(data["thaw_points"], data["forecast_points"], r_limit, data["sensors"])
+    if fig:
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("No thaw-front points yet.")
 
     st.divider()
 

@@ -124,6 +124,63 @@ class InfluxHelper:
             )
             self._logged_measurements.add("sensor_temperature_2d")
 
+    def write_fem_temperature_snapshot_2d(
+        self,
+        *,
+        time_hours: float,
+        horizon_hours: float,
+        sensors: Sequence[dict[str, float | str | None]],
+        site: str = "default",
+    ) -> None:
+        """Write forecasted 2D FEM temperatures in sensor-like format for comparison."""
+
+        if not sensors:
+            return
+
+        if self.write_api is None:  # pragma: no cover - runtime fallback
+            self.logger.warning("Influx write skipped (no client available) for measurement fem_temperature_2d")
+            return
+
+        timestamp = datetime.datetime.utcnow()
+        records = []
+        for sensor in sensors:
+            sensor_id = str(sensor.get("sensor_id", "unknown"))
+            temperature = sensor.get("temperature")
+            x_m = sensor.get("x_m")
+            z_m = sensor.get("z_m")
+            if temperature is None or x_m is None or z_m is None:
+                continue
+
+            point = (
+                Point("fem_temperature_2d")
+                .tag("site_id", site)
+                .tag("sensor_id", sensor_id)
+                .field("temperature", float(temperature))
+                .field("time_hours", float(time_hours))
+                .field("horizon_hours", float(horizon_hours))
+                .field("x_m", float(x_m))
+                .field("z_m", float(z_m))
+                .time(timestamp, write_precision=WritePrecision.NS)
+            )
+            records.append(point)
+
+        if not records:
+            return
+
+        try:
+            self.write_api.write(bucket=self.bucket, record=records)
+        except Exception as exc:  # pragma: no cover - runtime infra
+            self.logger.error("Error writing FEM temperature snapshot to InfluxDB: %s", exc)
+            return
+
+        if "fem_temperature_2d" not in self._logged_measurements:
+            self.logger.info(
+                "fem_temperature_2d write complete (t=%.2fh, sensors=%d)",
+                float(time_hours),
+                len(records),
+            )
+            self._logged_measurements.add("fem_temperature_2d")
+
     def query_temperature(self, site="default", depth=None, limit=100):
         query = f'''
         from(bucket: "{self.bucket}")
@@ -671,6 +728,22 @@ class InfluxHelper:
 
         return self._query_measurement(
             "sensor_temperature_2d",
+            site=site,
+            limit=limit,
+            range_start=range_start,
+        )
+
+    def query_fem_temperature_2d(
+        self,
+        *,
+        site: str = "default",
+        limit: int = 5000,
+        range_start: str = "-6h",
+    ) -> pd.DataFrame:
+        """Fetch the latest 2D FEM temperature snapshots at sensor-style points."""
+
+        return self._query_measurement(
+            "fem_temperature_2d",
             site=site,
             limit=limit,
             range_start=range_start,

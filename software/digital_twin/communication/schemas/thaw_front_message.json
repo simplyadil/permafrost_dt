@@ -19,8 +19,14 @@
         "required": ["x_m", "z_m"],
         "additionalProperties": false
       }
-    }
+    },
+    "contour_found": { "type": "boolean" },
+    "contour_state": { "type": "string" },
+    "contour_point_count": { "type": "integer" },
+    "proxy_radius_max_m": { "type": ["number", "null"] },
+    "proxy_radius_avg_m": { "type": ["number", "null"] },
+    "proxy_point_count": { "type": "integer" }
   },
   "required": ["time_hours", "radius_max_m", "radius_avg_m", "points"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

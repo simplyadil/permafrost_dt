@@ -11,6 +11,7 @@ but commented out so you can decide whether to trigger them.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Callable, Dict, List
 
 from software.startup.docker_services.start_influxdb import start_docker_influxdb
@@ -31,6 +32,11 @@ from software.startup.utils.config import configure_logging, load_startup_config
 
 def main() -> None:
     configure_logging()
+    fem_fields_dir = Path("artifacts/fem_fields")
+    if fem_fields_dir.exists():
+        for csv_file in fem_fields_dir.glob("*.csv"):
+            csv_file.unlink()
+    
     config = load_startup_config()
 
     rabbit_cfg = config.get("rabbitmq", {})
