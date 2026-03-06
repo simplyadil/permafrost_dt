@@ -1,4 +1,4 @@
-"""Simple stakeholder-facing FEM runner."""
+"""Simple API facing FEM runner."""
 
 from __future__ import annotations
 
