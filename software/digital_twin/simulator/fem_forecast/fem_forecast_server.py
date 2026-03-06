@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import csv
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -46,6 +46,7 @@ class FEMForecastServer:
     """Consumes boundary snapshots and publishes FEM forecasts."""
     SENSOR_DEPTHS_MM = (10, 50, 90, 170, 250, 290)
     SENSOR_WIDTHS_MM = (15, 30, 45, 60, 75, 90, 120)
+    MATERIAL_KEYS = {item.name for item in fields(MaterialProps)}
 
     def __init__(
         self,
@@ -113,6 +114,55 @@ class FEMForecastServer:
                 return False
         return default
 
+    def _normalize_material_override(self, material_override: object) -> dict[str, float]:
+        """Validate canonical material keys and coerce values to float."""
+        if material_override is None:
+            return {}
+        if not isinstance(material_override, dict):
+            raise ValueError("material_override must be an object/dict.")
+
+        normalized: dict[str, float] = {}
+        for key, raw_value in material_override.items():
+            if not isinstance(key, str):
+                raise ValueError("material_override keys must be strings.")
+            if key not in self.MATERIAL_KEYS:
+                allowed = ", ".join(sorted(self.MATERIAL_KEYS))
+                raise ValueError(f"Unknown material key '{key}'. Allowed keys: {allowed}.")
+            try:
+                normalized[key] = float(raw_value)
+            except (TypeError, ValueError):
+                raise ValueError(f"material_override.{key} must be numeric, got {raw_value!r}.")
+        return normalized
+
+    def _normalize_positions(self, positions: object) -> list[dict[str, float | str]]:
+        """Validate and normalize user-requested sampling positions."""
+        if positions is None:
+            return []
+        if not isinstance(positions, list):
+            raise ValueError("positions must be a list.")
+
+        normalized: list[dict[str, float | str]] = []
+        for idx, point in enumerate(positions):
+            if not isinstance(point, dict):
+                raise ValueError(f"positions[{idx}] must be an object.")
+            if "x_m" not in point or "z_m" not in point:
+                raise ValueError(f"positions[{idx}] must include x_m and z_m.")
+
+            try:
+                x_m = float(point["x_m"])
+                z_m = float(point["z_m"])
+            except (TypeError, ValueError):
+                raise ValueError(f"positions[{idx}] x_m and z_m must be numeric.")
+            sensor_id = point.get("sensor_id", point.get("id", f"P{idx + 1}"))
+            normalized.append(
+                {
+                    "sensor_id": str(sensor_id),
+                    "x_m": x_m,
+                    "z_m": z_m,
+                }
+            )
+        return normalized
+
     def _material_from_dict(self, material_dict: dict) -> MaterialProps:
         """Construct MaterialProps from dict with same defaults as _build_solver."""
         return MaterialProps(
@@ -173,30 +223,46 @@ class FEMForecastServer:
         self.logger.info("Appended field snapshot to %s", filepath)
         return str(filepath)
 
-    def _sample_field_at_sensor_grid(self, field: FieldSnapshot) -> list[dict[str, float | str]]:
-        """Sample FEM field at the configured D*-W* grid using nearest FEM node."""
+    def _sample_field_at_positions(
+        self,
+        field: FieldSnapshot,
+        positions: list[dict[str, float | str]],
+    ) -> list[dict[str, float | str]]:
+        """Sample FEM field at arbitrary x/z positions using nearest FEM node."""
         points = np.asarray(field.node_xy, dtype=float)
         x_abs = np.abs(points[:, 0])
         z = points[:, 1]
         zero_c_in_solver_units = self._solver._to_kelvin(0.0) if self._solver is not None else 0.0
 
         sampled: list[dict[str, float | str]] = []
-        for depth_mm in self.SENSOR_DEPTHS_MM:
-            z_target = depth_mm / 1000.0
-            for width_mm in self.SENSOR_WIDTHS_MM:
-                x_target = width_mm / 1000.0
-                distances = (x_abs - x_target) ** 2 + (z - z_target) ** 2
-                nearest_idx = int(np.argmin(distances))
-                temp_c = float(field.temperature[nearest_idx]) - float(zero_c_in_solver_units)
-                sampled.append(
-                    {
-                        "sensor_id": f"D{depth_mm}-W{width_mm}",
-                        "x_m": float(x_target),
-                        "z_m": float(z_target),
-                        "temperature": temp_c,
-                    }
-                )
+        for point in positions:
+            x_target = float(point["x_m"])
+            z_target = float(point["z_m"])
+            distances = (x_abs - abs(x_target)) ** 2 + (z - z_target) ** 2
+            nearest_idx = int(np.argmin(distances))
+            temp_c = float(field.temperature[nearest_idx]) - float(zero_c_in_solver_units)
+            sampled.append(
+                {
+                    "sensor_id": str(point["sensor_id"]),
+                    "x_m": float(x_target),
+                    "z_m": float(z_target),
+                    "temperature": temp_c,
+                }
+            )
         return sampled
+
+    def _sample_field_at_sensor_grid(self, field: FieldSnapshot) -> list[dict[str, float | str]]:
+        """Sample FEM field at the configured D*-W* grid using nearest FEM node."""
+        grid_positions = [
+            {
+                "sensor_id": f"D{depth_mm}-W{width_mm}",
+                "x_m": float(width_mm / 1000.0),
+                "z_m": float(depth_mm / 1000.0),
+            }
+            for depth_mm in self.SENSOR_DEPTHS_MM
+            for width_mm in self.SENSOR_WIDTHS_MM
+        ]
+        return self._sample_field_at_positions(field, grid_positions)
 
     def _build_solver(self) -> FEMSolver2D:
         if self.mesh_dir is None:
@@ -259,12 +325,11 @@ class FEMForecastServer:
         """
         if self._solver is None:
             self._solver = self._build_solver()
-        
-        # Apply material override if provided
+
+        merged = dict(self.material_config)
         if material_override is not None:
-            merged = {**self.material_config, **material_override}
-            self._solver.material = self._material_from_dict(merged)
-            self.logger.debug("Applied material override to solver")
+            merged.update(self._normalize_material_override(material_override))
+        self._solver.material = self._material_from_dict(merged)
         
         # Run forecast
         self._solver.advance(boundary_snapshot, horizon_hours=self.horizon_hours)
@@ -291,6 +356,51 @@ class FEMForecastServer:
             csv_path = self._write_field_csv(field_snapshot, self.horizon_hours, field_csv_dir)
         
         return result, field_snapshot, csv_path
+
+    def compute_temperatures(
+        self,
+        boundary_snapshot: dict,
+        positions: object,
+        material_override: object = None,
+    ) -> dict[str, object]:
+        """Public scenario API for direct FEM temperature sampling.
+
+        Args:
+            boundary_snapshot: FEM boundary payload (same shape as queue input).
+            positions: list of {"x_m": float, "z_m": float, "sensor_id"?: str}.
+            material_override: optional per-run material edits.
+        """
+        if not isinstance(boundary_snapshot, dict):
+            raise ValueError("boundary_snapshot must be an object/dict.")
+
+        normalized_positions = self._normalize_positions(positions)
+        if not normalized_positions:
+            raise ValueError("positions must contain at least one x_m/z_m point.")
+
+        result, field_snapshot, _ = self._run_forecast_with_field(
+            boundary_snapshot,
+            material_override=material_override,
+            include_field=True,
+            save_field_csv=False,
+            field_csv_dir=None,
+        )
+        if field_snapshot is None:
+            raise RuntimeError("Field snapshot unavailable after FEM run.")
+
+        try:
+            base_time = float(boundary_snapshot.get("time_hours", 0.0))
+        except (TypeError, ValueError):
+            raise ValueError("boundary_snapshot.time_hours must be numeric.")
+
+        return {
+            "timestamp": boundary_snapshot.get("timestamp") or datetime.utcnow().isoformat(),
+            "time_hours": base_time,
+            "horizon_hours": self.horizon_hours,
+            "radius_max_m": result.radius_max_m,
+            "radius_avg_m": result.radius_avg_m,
+            "points": result.points,
+            "temperatures": self._sample_field_at_positions(field_snapshot, normalized_positions),
+        }
 
     def _process_message(self, msg: dict) -> None:
         if self.influx is None or self.mq_out is None:
@@ -319,7 +429,6 @@ class FEMForecastServer:
                 if csv_path:
                     self.logger.info("Field CSV written to %s", csv_path)
             else:
-                # Default path: existing behavior unchanged
                 result = self._run_forecast(msg)
             
             self.logger.info(
