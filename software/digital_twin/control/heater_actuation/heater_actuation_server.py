@@ -36,6 +36,7 @@ class HeaterActuationServer:
         action_on_ok: str = "hold",
         setpoint_on_alert: float | None = 0.0,
         setpoint_on_ok: float | None = None,
+        setpoint_on_reduce: float | None = None,
         publish_on_change: bool = False,
         site_id: str = "default",
     ) -> None:
@@ -60,6 +61,13 @@ class HeaterActuationServer:
         self.action_on_ok = action_on_ok
         self.setpoint_on_alert = self._coerce_setpoint(setpoint_on_alert)
         self.setpoint_on_ok = self._coerce_setpoint(setpoint_on_ok)
+        # The predictive middle action: the circulator keeps running, at a lower
+        # setpoint. This is what makes a false forecast alarm affordable -- it
+        # costs thaw rate, not the experiment -- and it is the reason the
+        # predictive arm can be run at a lead long enough to be useful.
+        # Falls back to the ok setpoint so an unconfigured 'reduce' degrades to
+        # normal heating rather than to an undefined setpoint.
+        self.setpoint_on_reduce = self._coerce_setpoint(setpoint_on_reduce)
         self.publish_on_change = publish_on_change
         self.site_id = site_id
 
@@ -93,8 +101,14 @@ class HeaterActuationServer:
         recommended = msg.get("recommended_action")
         if recommended:
             action = str(recommended)
-            is_stop = action.lower() in ("stop", "off", "shutdown") or triggered
-            setpoint = self.setpoint_on_alert if is_stop else self.setpoint_on_ok
+            key = action.lower()
+            if key in ("stop", "off", "shutdown") or triggered:
+                setpoint = self.setpoint_on_alert
+            elif key in ("reduce", "lower"):
+                setpoint = (self.setpoint_on_reduce if self.setpoint_on_reduce is not None
+                            else self.setpoint_on_ok)
+            else:
+                setpoint = self.setpoint_on_ok
         else:
             action = self.action_on_alert if triggered else self.action_on_ok
             setpoint = self.setpoint_on_alert if triggered else self.setpoint_on_ok

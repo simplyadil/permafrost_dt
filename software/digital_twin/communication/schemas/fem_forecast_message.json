@@ -10,6 +10,22 @@
     "status": { "type": "string" },
     "radius_max_m": { "type": ["number", "null"] },
     "radius_avg_m": { "type": ["number", "null"] },
+    "lookahead_hours": { "type": ["number", "null"] },
+    "lookahead_valid_at_hours": { "type": ["number", "null"] },
+    "lookahead_times_h": {
+      "type": ["array", "null"],
+      "items": { "type": "number" }
+    },
+    "lookahead_radius_keep_m": {
+      "type": ["array", "null"],
+      "items": { "type": ["number", "null"] }
+    },
+    "lookahead_radius_stop_m": {
+      "type": ["array", "null"],
+      "items": { "type": ["number", "null"] }
+    },
+    "radius_max_keep_m": { "type": ["number", "null"] },
+    "radius_max_stop_m": { "type": ["number", "null"] },
     "points": {
       "type": "array",
       "items": {

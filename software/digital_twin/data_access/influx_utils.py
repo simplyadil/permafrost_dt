@@ -662,8 +662,12 @@ class InfluxHelper:
         site: str = "default",
         limit: int = 1000,
         range_start: str = "-30d",
+        newest: bool = False,
     ) -> pd.DataFrame:
-        """Generic measurement query helper with pivoted fields."""
+        """Generic measurement query helper with pivoted fields.
+
+        ``limit`` keeps the oldest rows unless ``newest`` is set.
+        """
 
         if self.query_api is None:  # pragma: no cover - runtime fallback
             self.logger.warning("Influx query skipped (no client available) for measurement %s", measurement)
@@ -681,7 +685,7 @@ class InfluxHelper:
           |> sort(columns: ["_time"])
         '''
         if limit is not None and int(limit) > 0:
-            query += f'\n  |> limit(n: {int(limit)})'
+            query += f'\n  |> {"tail" if newest else "limit"}(n: {int(limit)})'
 
         try:
             tables = self.query_api.query_data_frame(query)
@@ -811,6 +815,7 @@ class InfluxHelper:
         site: str = "default",
         limit: int = 5000,
         range_start: str = "-12h",
+        newest: bool = False,
     ) -> pd.DataFrame:
         """Fetch thaw-front point geometry."""
 
@@ -819,6 +824,7 @@ class InfluxHelper:
             site=site,
             limit=limit,
             range_start=range_start,
+            newest=newest,
         )
 
     def query_fem_forecast_metrics(
@@ -843,6 +849,7 @@ class InfluxHelper:
         site: str = "default",
         limit: int = 5000,
         range_start: str = "-12h",
+        newest: bool = False,
     ) -> pd.DataFrame:
         """Fetch FEM forecast point geometry."""
 
@@ -851,6 +858,7 @@ class InfluxHelper:
             site=site,
             limit=limit,
             range_start=range_start,
+            newest=newest,
         )
 
     def query_safety_alerts(

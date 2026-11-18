@@ -128,8 +128,9 @@ def _material_from_dict(material_dict: dict[str, Any]) -> MaterialProps:
         latent_heat=float(material_dict.get("latent_heat", defaults.latent_heat)),
         k_parameter=float(material_dict.get("k_parameter", defaults.k_parameter)),
         tr_k=float(material_dict.get("tr_k", defaults.tr_k)),
-        lambda_thawed=float(material_dict.get("lambda_thawed", defaults.lambda_thawed)),
-        lambda_frozen=float(material_dict.get("lambda_frozen", defaults.lambda_frozen)),
+        lambda_s=float(material_dict.get("lambda_s", defaults.lambda_s)),
+        lambda_w=float(material_dict.get("lambda_w", defaults.lambda_w)),
+        lambda_i=float(material_dict.get("lambda_i", defaults.lambda_i)),
     )
 
 
@@ -192,8 +193,18 @@ def FEM(
     config_path: str | Path = "startup.conf",
     horizon_hours: float | None = None,
     return_field: bool = False,
+    sensors: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Compute temperatures for selected positions using material params override."""
+    """Compute temperatures for selected positions using material params override.
+
+    ``sensors`` is one snapshot of thermocouple readings used as the initial
+    condition: it is interpolated onto the mesh nodes (linear inside the sensor
+    hull, nearest outside) by ``FEMSolver2D.seed_initial_field``. If omitted,
+    the ``sensors`` passthrough on ``boundary_snapshot`` is used. Only when
+    neither is available does the solve fall back to the uniform
+    ``solver.initial_temperature_c``, which for short horizons is the dominant
+    source of error -- and biases anything fitted against this function.
+    """
     if not isinstance(params, dict):
         raise ValueError("params must be a dict.")
     if not isinstance(positions, list) or not positions:
@@ -224,6 +235,14 @@ def FEM(
     )
 
     snapshot = boundary_snapshot or _default_boundary_snapshot(config)
+
+    # Seed the initial field from measured temperatures before marching. The
+    # boundary builder passes the raw sensor snapshot through on the message,
+    # so a caller handing us a live boundary snapshot gets this for free.
+    ic_sensors = sensors if sensors is not None else snapshot.get("sensors")
+    if isinstance(ic_sensors, list) and ic_sensors:
+        solver.seed_initial_field(ic_sensors)
+
     if horizon_hours is None:
         run_horizon_hours = float(fem_cfg.get("horizon_hours", 1.0))
     else:
@@ -260,18 +279,19 @@ def FEM(
 
 def main() -> None:
     params = {
-        "porosity": 0.20,
-        "rho_s": 2700.0,
+        "porosity": 0.43,
+        "rho_s": 2650.0,
         "rho_w": 1000.0,
-        "rho_i": 920.0,
+        "rho_i": 910.0,
         "cap_s": 790.0,
         "cap_w": 4180.0,
-        "cap_i": 2090.0,
+        "cap_i": 1930.0,
         "latent_heat": 334000.0,
-        "k_parameter": 5.0,
+        "k_parameter": 3.0,
         "tr_k": 273.15,
-        "lambda_thawed": 1.64,
-        "lambda_frozen": 2.96,
+        "lambda_s": 3.51,
+        "lambda_w": 0.56,
+        "lambda_i": 2.24,
     }
     depths_mm = (10, 50, 90, 170, 250, 290)
     widths_mm = (15, 30, 45, 60, 75, 90, 120)

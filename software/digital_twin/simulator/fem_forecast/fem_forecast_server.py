@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+from copy import deepcopy
 from dataclasses import dataclass, fields
 from datetime import datetime
 from pathlib import Path
@@ -35,6 +36,27 @@ class ForecastResult:
     radius_max_m: float | None
     radius_avg_m: float | None
     points: list[dict[str, float]]
+
+
+@dataclass
+class LookaheadResult:
+    """Two counterfactual branches sampled forward from the current state.
+
+    ``keep`` continues on the boundary as it stands; ``stop`` is the same
+    snapshot with the heater setpoint forced off. The difference between them is
+    the effect of the decision and nothing else, which is the whole point of
+    running both.
+
+    The trajectories are published rather than reduced to a time-to-breach here:
+    the breach limit belongs to the safety monitor, and duplicating it in the
+    simulator would give the system two places to disagree about what "the
+    limit" is.
+    """
+    times_h: list[float]
+    radius_keep_m: list[float | None]
+    radius_stop_m: list[float | None]
+    horizon_hours: float
+    valid_at_hours: float
 
 
 @dataclass
@@ -76,6 +98,11 @@ class FEMForecastServer:
         sticky_material_override: bool = True,
         field_csv_dir: str | None = None,
         run_baseline: bool = False,
+        enable_lookahead: bool = True,
+        lookahead_hours: float = 1.0,
+        lookahead_samples: int = 12,
+        lookahead_stop_setpoint_c: float = 0.0,
+        pipe_boundary_set: str = "left",
     ) -> None:
         self.logger = get_logger("FEMForecastServer")
         self.influx_config = influx_config or InfluxConfig()
@@ -113,6 +140,17 @@ class FEMForecastServer:
         # "without inversion" and the difference is attributable to the
         # calibration alone.
         self.run_baseline = self._as_bool(run_baseline, False)
+        # Predictive arm. The tracked step above is a nowcast -- with
+        # track_observed_time on it advances by the elapsed time since the last
+        # message, so its radius is valid *at* the observation time and carries no
+        # lead. The lookahead below is the genuine prediction the safety rules
+        # need, and it is the only thing in the system that can answer what
+        # happens if the heater is switched off now.
+        self.enable_lookahead = self._as_bool(enable_lookahead, True)
+        self.lookahead_hours = float(lookahead_hours)
+        self.lookahead_samples = max(int(lookahead_samples), 1)
+        self.lookahead_stop_setpoint_c = float(lookahead_stop_setpoint_c)
+        self.pipe_boundary_set = str(pipe_boundary_set)
 
         self.mq_in: Optional[RabbitMQClient] = None
         self.mq_out: Optional[RabbitMQClient] = None
@@ -483,6 +521,70 @@ class FEMForecastServer:
         
         return result, field_snapshot, csv_path
 
+    # ---------------------------
+    # PREDICTIVE LOOKAHEAD
+    # ---------------------------
+    def _stopped_boundary(self, boundary_snapshot: dict) -> dict:
+        """The same boundary snapshot with the heater turned off.
+
+        Only the pipe boundary changes: the deep frozen anchor, the insulated
+        faces, the mesh and the current field are all what they were.
+        """
+        snapshot = deepcopy(boundary_snapshot)
+        for bc in snapshot.get("boundaries", []) or []:
+            if (bc.get("boundary_set") == self.pipe_boundary_set
+                    and bc.get("bc_type") in {"robin", "dirichlet"}):
+                # A depth-resolved profile would otherwise keep driving heat in
+                # and silently override the scalar setpoint below.
+                bc.pop("temperature_profile", None)
+                bc["temperature"] = self.lookahead_stop_setpoint_c
+        return snapshot
+
+    def _sample_branch(self, boundary_snapshot: dict, start_hours: float) -> tuple[list[float], list[float | None]]:
+        """Advance a copy of the solver, sampling the front as it goes.
+
+        Sampling rather than jumping to the endpoint is what makes a crossing
+        *time* recoverable at all -- it cannot be read off the final state. The
+        solver state is restored before returning: the tracked run must not
+        inherit the lookahead, or simulated time races ahead of observed time and
+        every later step is wrong.
+        """
+        solver = self._solver
+        if solver is None:
+            return [], []
+        saved_T = solver.T.copy()
+        saved_time = solver.time_hours
+        step = self.lookahead_hours / self.lookahead_samples
+        times: list[float] = []
+        radii: list[float | None] = []
+        try:
+            for k in range(1, self.lookahead_samples + 1):
+                solver.advance(boundary_snapshot, horizon_hours=step)
+                radius_m, _radius_avg, _points = solver.compute_thaw_metrics()
+                times.append(start_hours + k * step)
+                radii.append(None if radius_m is None else float(radius_m))
+        finally:
+            solver.T = saved_T
+            solver.time_hours = saved_time
+        return times, radii
+
+    def _run_lookahead(self, boundary_snapshot: dict, time_hours: float) -> LookaheadResult | None:
+        """Both counterfactual branches, or None when the arm is off/unavailable."""
+        if not self.enable_lookahead or self._solver is None or self.lookahead_hours <= 0.0:
+            return None
+        times, keep = self._sample_branch(boundary_snapshot, time_hours)
+        _times, stop = self._sample_branch(
+            self._stopped_boundary(boundary_snapshot), time_hours)
+        if not times:
+            return None
+        return LookaheadResult(
+            times_h=times,
+            radius_keep_m=keep,
+            radius_stop_m=stop,
+            horizon_hours=self.lookahead_hours,
+            valid_at_hours=time_hours + self.lookahead_hours,
+        )
+
     def _run_baseline_forecast(
         self,
         boundary_snapshot: dict,
@@ -625,6 +727,16 @@ class FEMForecastServer:
                 self._solver.time_hours = time_hours
             self._last_time_hours = time_hours
 
+            # Predictive arm, run from the state the tracked step just produced
+            # and with whatever material the inversion has calibrated. Isolated
+            # like the baseline below: it feeds the safety rules, but a failure
+            # here must not cost us the nowcast that the reactive rules need.
+            lookahead: LookaheadResult | None = None
+            try:
+                lookahead = self._run_lookahead(msg, time_hours)
+            except Exception as exc:
+                self.logger.error("Lookahead failed: %s", exc, exc_info=True)
+
             # Uncalibrated reference run. Isolated in its own try block: it is a
             # diagnostic, so a failure here must not cost us the live forecast.
             baseline_field: FieldSnapshot | None = None
@@ -676,6 +788,16 @@ class FEMForecastServer:
                 "radius_max_m": result.radius_max_m,
                 "radius_avg_m": result.radius_avg_m,
                 "points": result.points,
+                # Predictive arm. Absent (null) whenever the lookahead is off or
+                # failed, which the safety monitor reads as "no forecast
+                # evidence" and degrades to the measured ladder for.
+                "lookahead_hours": None if lookahead is None else lookahead.horizon_hours,
+                "lookahead_valid_at_hours": None if lookahead is None else lookahead.valid_at_hours,
+                "lookahead_times_h": None if lookahead is None else lookahead.times_h,
+                "lookahead_radius_keep_m": None if lookahead is None else lookahead.radius_keep_m,
+                "lookahead_radius_stop_m": None if lookahead is None else lookahead.radius_stop_m,
+                "radius_max_keep_m": None if lookahead is None else lookahead.radius_keep_m[-1],
+                "radius_max_stop_m": None if lookahead is None else lookahead.radius_stop_m[-1],
             }
             self.mq_out.publish(payload)
             self.influx.write_fem_forecast_metrics(

@@ -19,7 +19,22 @@
     "warn_fraction": { "type": ["number", "null"] },
     "critical_fraction": { "type": ["number", "null"] },
     "rmin_below_floor": { "type": ["boolean", "null"] },
-    "recommended_action": { "type": ["string", "null"] }
+    "recommended_action": { "type": ["string", "null"] },
+
+    "predicate_m1": { "type": ["boolean", "null"] },
+    "predicate_m2": { "type": ["boolean", "null"] },
+    "predicate_f1": { "type": ["boolean", "null"] },
+    "predicate_f2": { "type": ["boolean", "null"] },
+    "forecast_radius_keep_m": { "type": ["number", "null"] },
+    "forecast_radius_stop_m": { "type": ["number", "null"] },
+    "time_to_breach_hours": { "type": ["number", "null"] },
+    "lookahead_hours": { "type": ["number", "null"] },
+    "measurement_age_hours": { "type": ["number", "null"] },
+    "forecast_age_hours": { "type": ["number", "null"] },
+    "forecast_available": { "type": ["boolean", "null"] },
+    "confirm_count": { "type": ["integer", "null"] },
+    "confirm_required": { "type": ["integer", "null"] },
+    "latched": { "type": ["boolean", "null"] }
   },
   "required": [
     "time_hours",

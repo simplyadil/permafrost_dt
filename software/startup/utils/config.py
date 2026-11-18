@@ -369,9 +369,9 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "refresh_seconds": 20,
         "history_hours": 2.0,
         "max_points": 3000,
-        "r_limit_m": 0.4,
-        "safe_pct": 0.8,
-        "caution_pct": 0.95,
+        "r_limit_m": 0.040,
+        "safe_pct": 0.6,
+        "caution_pct": 0.9,
         "site_id": "default",
     },
 }

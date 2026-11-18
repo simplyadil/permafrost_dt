@@ -36,7 +36,7 @@ from scipy.optimize import minimize
 
 from software.digital_twin.communication.messaging import RabbitMQClient, RabbitMQConfig, resolve_queue_config
 from software.digital_twin.data_access.influx_utils import InfluxConfig, InfluxHelper
-from software.tools.run_fem_case import FEM
+from software.digital_twin.simulator.fem_inversion.window_forward_model import WindowForwardModel
 from software.utils.logging_setup import get_logger
 
 SENSOR_QUEUE = "permafrost.record.sensors.2d"
@@ -73,18 +73,25 @@ class FEMInversionServer:
         relative_bounds: dict[str, list[float] | tuple[float, float]] | None = None,
         loss: str = "mse",
         window_size: int = 5,
+        window_stride: int = 1,
         min_snapshots: int = 5,
         min_sensors: int = 3,
+        min_sensor_radius_m: float = 0.0,
         min_update_hours: float = 0.0,
         min_update_seconds: float = 0.0,
+        warmup_hours: float = 0.5,
         relative_time_window: bool = True,
         min_horizon_hours: float = 1e-3,
         maxiter: int = 40,
         maxfun: int = 80,
+        scale_space: str = "linear",
+        prior_params: dict | None = None,
+        prior_weight: float = 0.0,
         seed: int | None = 42,
         publish_material_override_boundary: bool = False,
         boundaries: list[dict] | None = None,
         sensor_overrides: list[dict] | None = None,
+        config_path: str = "startup.conf",
     ) -> None:
         self.logger = get_logger("FEMInversionServer")
         self.influx_config = influx_config or InfluxConfig()
@@ -113,21 +120,71 @@ class FEMInversionServer:
             raise ValueError("loss must be either 'mse' or 'mae'.")
 
         self.window_size = max(int(window_size), 2)
+        # Every ``window_stride``-th snapshot goes into the window, so the same
+        # number of points spans ``window_stride`` times more experiment. The
+        # storage term (``cap_s``) and bulk conduction only show up in a sensor
+        # history integrated over time; at a 30 s cadence a 20-point window is
+        # ten minutes, which is mostly the seeded initial field relaxing.
+        self.window_stride = max(int(window_stride), 1)
         self.min_snapshots = max(int(min_snapshots), 2)
         self.min_sensors = max(int(min_sensors), 1)
+        # Sensors closer than this to the axis (|x_m|) are left out of the fit.
+        # The pipe-wall thermocouples read the boundary condition, not the soil:
+        # on April 8 the 12 within 2 cm carry a 1.5-3 C pipe-BC bias while the 59
+        # beyond fit to ~0.2 C, and no soil parameter can remove a boundary bias
+        # -- the optimiser just drives the parameters to bounds trying. They still
+        # seed the initial field, which needs them.
+        self.min_sensor_radius_m = max(float(min_sensor_radius_m), 0.0)
         self.min_update_hours = max(float(min_update_hours), 0.0)
         self.min_update_seconds = max(float(min_update_seconds), 0.0)
+        self.warmup_hours = max(float(warmup_hours), 0.0)
         self.relative_time_window = bool(relative_time_window)
         self.min_horizon_hours = max(float(min_horizon_hours), 1e-6)
         self.maxiter = max(int(maxiter), 1)
         self.maxfun = max(int(maxfun), 1)
+        # "log" optimises log(scale): halving and doubling are the same distance
+        # from the start, and the finite-difference gradient is relative to the
+        # current value instead of absolute. In linear space a parameter started
+        # at 2x its truth has to cover four times the distance of one started at
+        # 0.5x, and L-BFGS-B tends to run out of budget on the long side.
+        self.scale_space = str(scale_space).strip().lower()
+        # Optional Tikhonov prior: adds ``prior_weight * sum(ln(p / prior)^2)``
+        # over the inverted parameters named in ``prior_params`` (absolute
+        # values, independent of ``base_params`` so the prior does not move
+        # with the starting point). On April 8 ``cap_s`` and ``lambda_s`` trade
+        # off along a ridge -- scaling both together barely changes the
+        # response -- and without a prior the fit slides down it to the bounds.
+        self.prior_weight = max(float(prior_weight), 0.0)
+        self.prior_params: dict[str, float] = {}
+        for name, value in (prior_params or {}).items():
+            if name in self.invert_params:
+                try:
+                    if float(value) > 0.0:
+                        self.prior_params[name] = float(value)
+                except (TypeError, ValueError):
+                    continue
+        if self.scale_space not in {"linear", "log"}:
+            raise ValueError("scale_space must be either 'linear' or 'log'.")
 
         self.publish_material_override_boundary = bool(publish_material_override_boundary)
         self.boundaries = boundaries or []
         self.sensor_overrides = sensor_overrides or []
 
+        self.config_path = str(config_path)
+        self._window_model: WindowForwardModel | None = None
+        # Calibrated boundary snapshots as they arrived, (time_hours, snapshot),
+        # so a window is fitted under the boundary in force at each step rather
+        # than the latest one throughout. Trimmed to the buffered window.
+        self._boundary_history: list[tuple[float, dict]] = []
+
         self._rng = Random(seed)
         self._snapshots: list[dict] = []
+        # First snapshot time ever seen, which is what ``warmup_hours`` is
+        # measured from. It cannot be taken from ``_snapshots``: that list is
+        # trimmed to the fitting window, so its oldest entry is only ever a few
+        # snapshots old and would satisfy any warm-up immediately.
+        self._first_time_hours: float | None = None
+        self._warmup_announced = False
         self._last_inversion_time: float | None = None
         self._last_inversion_wallclock: datetime | None = None
         self._last_best_scales: list[float] | None = None
@@ -255,6 +312,8 @@ class FEMInversionServer:
 
     def _upsert_snapshot(self, snapshot: dict) -> None:
         time_hours = float(snapshot["time_hours"])
+        if self._first_time_hours is None:
+            self._first_time_hours = time_hours
         replaced = False
         for idx, existing in enumerate(self._snapshots):
             if np.isclose(float(existing["time_hours"]), time_hours, atol=1e-9):
@@ -265,11 +324,70 @@ class FEMInversionServer:
             self._snapshots.append(snapshot)
 
         self._snapshots.sort(key=lambda item: float(item["time_hours"]))
-        if len(self._snapshots) > self.window_size:
-            self._snapshots = self._snapshots[-self.window_size :]
+        if len(self._snapshots) > self._buffer_size:
+            self._snapshots = self._snapshots[-self._buffer_size :]
+        self._trim_boundary_history()
+
+    def _trim_boundary_history(self) -> None:
+        """Drop boundaries older than the one in force at the oldest snapshot."""
+        if not self._snapshots or len(self._boundary_history) < 2:
+            return
+        oldest = float(self._snapshots[0]["time_hours"])
+        keep_from = 0
+        for idx, (t, _snap) in enumerate(self._boundary_history):
+            if t <= oldest + 1e-9:
+                keep_from = idx
+        self._boundary_history = self._boundary_history[keep_from:]
+
+    def _boundary_schedule(self, t0_hours: float) -> list[tuple[float, dict]] | None:
+        """Boundary history on the window clock (t0 = first window snapshot)."""
+        if not self._boundary_history:
+            return None
+        schedule: list[tuple[float, dict]] = []
+        for t, snap in self._boundary_history:
+            rel = t - t0_hours
+            if rel <= 1e-9:
+                schedule = [(0.0, snap)]
+            else:
+                schedule.append((rel, snap))
+        return schedule or None
+
+    @property
+    def _buffer_size(self) -> int:
+        """Raw snapshots needed to fill one strided window."""
+        return (self.window_size - 1) * self.window_stride + 1
+
+    def _window_snapshots(self) -> list[dict]:
+        """The strided window, always ending on the newest snapshot."""
+        recent = self._snapshots[-self._buffer_size :]
+        return recent[::-1][:: self.window_stride][::-1]
+
+    def _warmup_remaining_hours(self, current_time_hours: float) -> float:
+        """Data-time left before the service is allowed to fit at all.
+
+        Measured on the sensor clock, not the wall clock, so a replay warms up
+        over the same stretch of *experiment* the live service would. The first
+        fits of a run are the worst ones -- the window is short, the field is
+        still relaxing out of its seeded initial condition, and the thaw front
+        has barely moved, so the parameters are close to unidentifiable and the
+        fit lands on whatever bound the noise points at. Warming up keeps those
+        fits from being published as a ``material_override`` the forecast then
+        has to live with, since each fit warm-starts from the last.
+
+        If the service is started or restarted mid-experiment this counts from
+        the first snapshot *it* sees, which is the intended reading: the warm-up
+        is about how much data this instance has accumulated, not how long the
+        rig has been running.
+        """
+        if self.warmup_hours <= 0.0 or self._first_time_hours is None:
+            return 0.0
+        elapsed = current_time_hours - self._first_time_hours
+        return max(self.warmup_hours - elapsed, 0.0)
 
     def _can_run_inversion(self, current_time_hours: float, now_utc: datetime) -> bool:
-        if len(self._snapshots) < self.min_snapshots:
+        if len(self._window_snapshots()) < self.min_snapshots:
+            return False
+        if self._warmup_remaining_hours(current_time_hours) > 0.0:
             return False
         if self._last_inversion_time is not None:
             if (current_time_hours - self._last_inversion_time) < self.min_update_hours:
@@ -290,10 +408,10 @@ class FEMInversionServer:
         with -- otherwise the objective compares real temperature histories
         against runs that all begin from a flat field.
         """
-        if len(self._snapshots) < self.min_snapshots:
+        window = self._window_snapshots()
+        if len(window) < self.min_snapshots:
             return None
 
-        window = self._snapshots[-self.window_size :]
         common_ids: set[str] | None = None
         sensor_position: dict[str, tuple[float, float]] = {}
 
@@ -308,7 +426,10 @@ class FEMInversionServer:
         if not common_ids:
             return None
 
-        sorted_ids = sorted(common_ids)
+        sorted_ids = sorted(
+            sid for sid in common_ids
+            if abs(sensor_position[sid][0]) >= self.min_sensor_radius_m
+        )
         if len(sorted_ids) < self.min_sensors:
             return None
 
@@ -352,6 +473,26 @@ class FEMInversionServer:
             )
             return None
 
+        warmup_left = self._warmup_remaining_hours(latest_time)
+        if warmup_left > 0.0:
+            # Said once per instance at INFO, then at DEBUG: a 30 min warm-up at
+            # a 30 s cadence is 60 snapshots, and logging every one of them as a
+            # skip buries the reason it is quiet in the noise of it being quiet.
+            message = ("Inversion warming up (%.1f min of %.1f min remaining, "
+                       "snapshots=%d); no fit will run yet")
+            args = (warmup_left * 60.0, self.warmup_hours * 60.0, len(self._snapshots))
+            if not self._warmup_announced:
+                self._warmup_announced = True
+                self.logger.info(message, *args)
+            else:
+                self.logger.debug(message, *args)
+            return None
+        if self._warmup_announced and self._last_inversion_time is None:
+            self.logger.info(
+                "Inversion warm-up complete at t=%.3fh; fitting is now live", latest_time
+            )
+            self._warmup_announced = False
+
         if not self._can_run_inversion(latest_time, now_utc):
             self.logger.info(
                 "Inversion skipped (snapshots=%d, min_snapshots=%d, dt_hours=%.3f, dt_seconds=%.1f)",
@@ -370,11 +511,13 @@ class FEMInversionServer:
             return None
 
         times_hours, positions, obs_series, ic_sensors = window
+        boundary_schedule = self._boundary_schedule(float(self._window_snapshots()[0]["time_hours"]))
         trigger_snapshot = deepcopy(latest)
         self._inversion_running = True
         self._pending_recheck = False
 
-        return latest_time, trigger_snapshot, times_hours, positions, obs_series, ic_sensors
+        return (latest_time, trigger_snapshot, times_hours, positions, obs_series, ic_sensors,
+                boundary_schedule)
 
     def _start_inversion_thread(
         self,
@@ -385,6 +528,7 @@ class FEMInversionServer:
         positions: list[dict],
         obs_series: dict[str, list[float]],
         ic_sensors: list[dict],
+        boundary_schedule: list[tuple[float, dict]] | None = None,
     ) -> None:
         worker = Thread(
             target=self._run_inversion_job,
@@ -395,6 +539,7 @@ class FEMInversionServer:
                 "positions": positions,
                 "obs_series": obs_series,
                 "ic_sensors": ic_sensors,
+                "boundary_schedule": boundary_schedule,
             },
             daemon=True,
         )
@@ -409,6 +554,7 @@ class FEMInversionServer:
         positions: list[dict],
         obs_series: dict[str, list[float]],
         ic_sensors: list[dict],
+        boundary_schedule: list[tuple[float, dict]] | None = None,
     ) -> None:
         self.logger.info(
             "Starting inversion (time=%.3fh, snapshots=%d, sensors=%d, points=%d, ic_sensors=%d)",
@@ -421,7 +567,8 @@ class FEMInversionServer:
 
         start = datetime.utcnow()
         try:
-            best_params, info = self._run_inversion(times_hours, positions, obs_series, ic_sensors)
+            best_params, info = self._run_inversion(times_hours, positions, obs_series, ic_sensors,
+                                                    boundary_schedule=boundary_schedule)
             self._publish_result(
                 sensor_msg=trigger_snapshot,
                 best_params=best_params,
@@ -456,6 +603,7 @@ class FEMInversionServer:
                     next_positions,
                     next_obs_series,
                     next_ic_sensors,
+                    next_schedule,
                 ) = restart_job
                 self._start_inversion_thread(
                     trigger_time=next_time,
@@ -464,6 +612,7 @@ class FEMInversionServer:
                     positions=next_positions,
                     ic_sensors=next_ic_sensors,
                     obs_series=next_obs_series,
+                    boundary_schedule=next_schedule,
                 )
 
     def _normalized_to_params(self, scales: np.ndarray, base_inv_values: dict[str, float]) -> dict[str, float]:
@@ -472,12 +621,44 @@ class FEMInversionServer:
             params[name] = float(base_inv_values[name]) * float(scales[idx])
         return params
 
+    def set_boundary_snapshot(self, snapshot: dict | None) -> bool:
+        """Record the boundary the forecast is marching, and fit under it.
+
+        The inversion used to fit every window under the *configured* boundary
+        while the forecast ran the pipe-calibrated one. The optimiser cannot move
+        a boundary, so it absorbed the difference into the material instead --
+        and the resulting parameters, applied under the other boundary, carried
+        much of that compensation as error. On the April 8 data the mismatch cost
+        roughly two thirds of the error reduction the inversion could deliver,
+        and it left ``lambda_s`` with its optimum outside the allowed range.
+
+        Call this whenever a calibrated boundary snapshot arrives. It is cheap
+        and idempotent: an unchanged boundary does not disturb the cached solver.
+        """
+        if self._window_model is None:
+            self._window_model = WindowForwardModel(self.config_path)
+        if isinstance(snapshot, dict) and snapshot.get("boundaries"):
+            try:
+                t = float(snapshot["time_hours"])
+            except (KeyError, TypeError, ValueError):
+                t = None
+            if t is not None:
+                with self._state_lock:
+                    self._boundary_history = [
+                        item for item in self._boundary_history if item[0] < t - 1e-9
+                    ] + [(t, snapshot)]
+        changed = self._window_model.set_boundary(snapshot)
+        if changed:
+            self.logger.info("Inversion now fitting under the calibrated boundary")
+        return changed
+
     def _generate_series(
         self,
         params: dict[str, float],
         positions: list[dict],
         times_hours: list[float],
         ic_sensors: list[dict] | None = None,
+        boundary_schedule: list[tuple[float, dict]] | None = None,
     ) -> dict[str, list[float]]:
         """Forward-model the sensor histories for one candidate parameter set.
 
@@ -485,21 +666,17 @@ class FEMInversionServer:
         (``ic_sensors``, the first snapshot of the window) rather than from the
         uniform fallback temperature, so the residual the optimiser minimises
         reflects the parameters instead of a wrong starting state.
+
+        The window is walked as a single trajectory with a reused solver, so the
+        early time steps are integrated once rather than once per later
+        observation time. The forward model this replaced is kept in
+        ``software/tools/golden_reference.py`` and checked against it by
+        ``software/tools/verify_inversion_equivalence.py``.
         """
-        series = {pos["sensor_id"]: [] for pos in positions}
-        for t in times_hours:
-            result = FEM(
-                params=params,
-                positions=positions,
-                boundary_snapshot=None,
-                horizon_hours=float(t),
-                return_field=False,
-                sensors=ic_sensors,
-            )
-            for item in result["temperatures"]:
-                sid = item["sensor_id"]
-                series[sid].append(float(item["temperature"]))
-        return series
+        if self._window_model is None:
+            self._window_model = WindowForwardModel(self.config_path)
+        return self._window_model.generate_series(params, positions, times_hours, ic_sensors,
+                                                  boundary_schedule=boundary_schedule)
 
     def _compute_loss(self, pred_series: dict[str, list[float]], obs_series: dict[str, list[float]]) -> float:
         values = []
@@ -536,26 +713,49 @@ class FEMInversionServer:
             scales.append(min(max(1.0, lo), hi))
         return scales
 
+    def _prior_penalty(self, params: dict[str, float]) -> float:
+        if self.prior_weight <= 0.0 or not self.prior_params:
+            return 0.0
+        return self.prior_weight * float(sum(
+            np.log(float(params[name]) / prior) ** 2 for name, prior in self.prior_params.items()
+        ))
+
     def _run_inversion(
         self,
         times_hours: list[float],
         positions: list[dict],
         obs_series: dict[str, list[float]],
         ic_sensors: list[dict] | None = None,
+        boundary_schedule: list[tuple[float, dict]] | None = None,
     ) -> tuple[dict[str, float], dict[str, object]]:
         base_inv_values = {name: float(self.base_params[name]) for name in self.invert_params}
         y0 = self._initial_scales()
         bounds = [self.relative_bounds[name] for name in self.invert_params]
+        use_log = self.scale_space == "log"
+        if use_log:
+            x0 = np.log(np.array(y0, dtype=float))
+            opt_bounds = [(float(np.log(lo)), float(np.log(hi))) for lo, hi in bounds]
+        else:
+            x0 = np.array(y0, dtype=float)
+            opt_bounds = bounds
+
+        def to_scales(x: np.ndarray) -> np.ndarray:
+            return np.exp(x) if use_log else np.asarray(x, dtype=float)
 
         self._eval_count = 0
         best_eval_loss = float("inf")
 
-        def objective(scales: np.ndarray) -> float:
+        def objective(x: np.ndarray) -> float:
             nonlocal best_eval_loss
             self._eval_count += 1
+            scales = to_scales(x)
             params = self._normalized_to_params(scales, base_inv_values)
-            pred_series = self._generate_series(params, positions, times_hours, ic_sensors)
-            loss_value = self._compute_loss(pred_series, obs_series)
+            if boundary_schedule:
+                pred_series = self._generate_series(params, positions, times_hours, ic_sensors,
+                                                    boundary_schedule=boundary_schedule)
+            else:
+                pred_series = self._generate_series(params, positions, times_hours, ic_sensors)
+            loss_value = self._compute_loss(pred_series, obs_series) + self._prior_penalty(params)
             if np.isfinite(loss_value):
                 best_eval_loss = min(best_eval_loss, loss_value)
             self.logger.info(
@@ -568,23 +768,25 @@ class FEMInversionServer:
 
         result = minimize(
             objective,
-            x0=np.array(y0, dtype=float),
+            x0=x0,
             method="L-BFGS-B",
-            bounds=bounds,
+            bounds=opt_bounds,
             options={
                 "maxiter": self.maxiter,
                 "maxfun": self.maxfun,
             },
         )
 
-        best_scales = [float(v) for v in result.x]
-        best_params = self._normalized_to_params(result.x, base_inv_values)
+        result_scales = to_scales(result.x)
+        best_scales = [float(v) for v in result_scales]
+        best_params = self._normalized_to_params(result_scales, base_inv_values)
         self._last_best_scales = best_scales
 
         info = {
             "success": bool(result.success),
             "message": str(result.message),
             "final_loss": float(result.fun),
+            "prior_penalty": self._prior_penalty(best_params),
             "best_eval_loss": float(best_eval_loss),
             "loss_name": self.loss,
             "eval_count": int(self._eval_count),
@@ -700,6 +902,7 @@ class FEMInversionServer:
             positions,
             obs_series,
             ic_sensors,
+            boundary_schedule,
         ) = job
         self._start_inversion_thread(
             trigger_time=trigger_time,
@@ -708,6 +911,7 @@ class FEMInversionServer:
             positions=positions,
             obs_series=obs_series,
             ic_sensors=ic_sensors,
+            boundary_schedule=boundary_schedule,
         )
 
     def setup(self) -> None:

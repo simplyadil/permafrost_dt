@@ -137,9 +137,31 @@ class FEMSolver2D:
         self._build_geometry_cache()
 
     # ---------------------------
+    # MATERIAL SWAPPING
+    # ---------------------------
+    def set_material(self, material: MaterialProps) -> None:
+        """Replace the material properties, keeping mesh and geometry cache.
+
+        Mesh loading and ``_build_geometry_cache`` depend only on the geometry,
+        so a parameter sweep (the inversion optimiser evaluating candidate soil
+        properties) does not need a new solver per candidate -- it needs this.
+        Rebuilding instead costs ~79 ms of file I/O and basis evaluation per
+        candidate, which for one inversion is several hundred redundant rebuilds.
+
+        Only ``_lambda_solid_factor`` is derived from the material, so that is
+        the only cached quantity to refresh. The temperature field is left
+        untouched; callers restoring an initial condition must do so themselves.
+        """
+        for name in ("lambda_s", "lambda_w", "lambda_i"):
+            if float(getattr(material, name)) <= 0.0:
+                raise ValueError(f"{name} must be > 0 (got {getattr(material, name)}).")
+        self.material = material
+        self._lambda_solid_factor = float(material.lambda_s) ** (1.0 - float(material.porosity))
+
+    # ---------------------------
     # INITIAL CONDITION SEEDING
     # ---------------------------
-    def seed_initial_field(self, sensors: list[dict]) -> bool:
+    def seed_initial_field(self, sensors: list[dict], *, force: bool = False) -> bool:
         """Seed the initial temperature field from a single sensor snapshot.
 
         Replaces the uniform initial condition with a per-node field built by
@@ -155,13 +177,15 @@ class FEMSolver2D:
 
         Sensor x_m/z_m are expected in the same metric frame as the mesh nodes.
         Runs at most once (guarded by ``_seeded``); later calls are no-ops so the
-        forward-marching solution is never reset.
+        forward-marching solution is never reset. ``force=True`` overrides that
+        guard, for callers that deliberately rewind a reused solver to a new
+        initial condition (the inversion's window forward model).
 
         Returns:
             True if the field was seeded, False if it kept the uniform fallback
             (already seeded, or too few usable sensors to triangulate).
         """
-        if self._seeded:
+        if self._seeded and not force:
             return False
 
         points: list[tuple[float, float]] = []
@@ -266,6 +290,35 @@ class FEMSolver2D:
                 self.elem_N[iel, jel, :] = N
                 self.elem_dNdx[iel, jel, :, :] = dNdx
                 self.elem_detJ[iel, jel] = detJ
+
+        self._build_sparsity_pattern()
+
+    def _build_sparsity_pattern(self) -> None:
+        """Precompute the fixed COO->CSR scatter map for the element matrices.
+
+        The (row, col) triplet lists produced by the element loop depend only on
+        the element connectivity, so they are identical on every assembly. The
+        original code rebuilt them -- and re-sorted them in ``coo_matrix.tocsr()``
+        -- for every time step. Here the pattern is built once and each assembly
+        only fills the CSR ``data`` array via ``np.bincount``.
+
+        ``rows``/``cols`` reproduce the per-element ``np.repeat(sctr, nn)`` /
+        ``np.tile(sctr, nn)`` ordering exactly, so ``Ke.ravel()`` lines up with
+        the scatter map without any reordering.
+        """
+        sctr = self.elem_sctr
+        nn = sctr.shape[1]
+        rows = np.repeat(sctr, nn, axis=1).ravel()
+        cols = np.tile(sctr, (1, nn)).ravel()
+
+        n = self.numnode
+        linear = rows.astype(np.int64) * n + cols.astype(np.int64)
+        unique, inverse = np.unique(linear, return_inverse=True)
+        self._scatter_map = inverse.astype(np.int64)
+        self._scatter_nnz = int(unique.size)
+        self._csr_indices = (unique % n).astype(np.int32)
+        unique_rows = (unique // n).astype(np.int64)
+        self._csr_indptr = np.searchsorted(unique_rows, np.arange(n + 1)).astype(np.int32)
 
     # ---------------------------
     # HELPER METHODS
@@ -383,14 +436,30 @@ class FEMSolver2D:
         it must stay pinned across the Newton iterations of one step. Defaults
         to ``self.T`` for callers assembling outside a Newton loop.
 
-        This implements the baseline's assembly logic:
-          1. Boundary condition assembly (robin/neumann on edges)
-          2. Element loop with Jacobian computation
-          3. Local stiffness/capacity contributions
-          4. Global sparse matrix assembly
-          5. Application of Dirichlet boundary conditions
+        Three stages:
+          1. Boundary terms   -- ``_assemble_boundary`` (independent of self.T)
+          2. Element matrices -- ``_element_matrices`` (the nonlinear part)
+          3. Backward-Euler combination into A and b
 
         Corresponds to baseline: "for i in range(LeftEdge.shape[0]):" and "for iel in range(numelem):"
+        """
+        fT, K_robin, dirichlet_map = self._assemble_boundary(boundary_snapshot)
+        K_matrix, C_matrix = self._element_matrices()
+
+        A = K_matrix + K_robin + (C_matrix / float(self.solver.dt_seconds))
+        transient_field = self.T if t_prev is None else t_prev
+        b = fT + (C_matrix @ transient_field) / float(self.solver.dt_seconds)
+        return A, b, dirichlet_map
+
+    def _assemble_boundary(
+        self,
+        boundary_snapshot: dict,
+    ) -> tuple[np.ndarray, sp.csr_matrix, dict[int, float]]:
+        """Boundary force vector, Robin stiffness and Dirichlet map.
+
+        Lifted out of ``_assemble_system`` unchanged. These terms depend on the
+        boundary snapshot and the geometry only -- never on ``self.T`` -- which
+        is what makes the element stage the sole nonlinear part.
         """
         fT = np.zeros(self.numnode)
         dirichlet_map: dict[int, float] = {}
@@ -478,78 +547,83 @@ class FEMSolver2D:
                         for a in range(nn):
                             fT[sctr[a]] += fT_local[a]
 
-        # ===== ELEMENT LOOP: Stiffness and Capacity Assembly =====
-        # Assembles K (thermal conductivity) and C (heat capacity) matrices
-        rows: list[int] = []
-        cols: list[int] = []
-        data_k: list[float] = []
-        data_c: list[float] = []
-
-        for iel in range(self.numelem):
-            sctrT = self.element[iel, :].astype(int)
-            nn = len(sctrT)
-            for jel, w in enumerate(self.W2):
-                # --- Extract precomputed basis and Jacobian (from _build_geometry_cache) ---
-                # Baseline computes these fresh each loop; we cached them for performance
-                N = self.elem_N[iel, jel, :]
-                dNdx = self.elem_dNdx[iel, jel, :, :]
-                detJ = self.elem_detJ[iel, jel]
-                T_temp = float(N.T @ self.T[sctrT])
-
-                # ===== Auxiliary Relations: Phase-Change Logic =====
-                # Corresponds to baseline:
-                #   X_exp = np.exp(k_parameter * (T_temp - Tr))
-                #   si = 1.0 / (1.0 + X_exp)
-                #   dsidT = -k_parameter * X_exp / (1.0 + X_exp)**2
-                #   sw = 1.0 - si
-                #   rhoc_eff = (1-poro)*rho_s*cap_s + (poro*sw)*rho_w*cap_w + (poro*si)*rho_i*cap_i
-                # With clamping to prevent exponential overflow. The baseline's
-                # landa = (T_temp >= 273.15) ? 1.64 : 2.96 switch is replaced by
-                # the lambda_s-based mixture below.
-                exponent = self.material.k_parameter * (T_temp - self.material.tr_k)
-                exponent = np.clip(exponent, -100, 100)
-                X_exp = np.exp(exponent)
-                si = 1.0 / (1.0 + X_exp)
-                dsidT = -self.material.k_parameter * X_exp / (1.0 + X_exp) ** 2
-                sw = 1.0 - si
-
-                landa = self._bulk_conductivity(sw, si)
-
-                rhoc_eff = (
-                    (1.0 - self.material.porosity) * self.material.rho_s * self.material.cap_s
-                    + (self.material.porosity * sw) * self.material.rho_w * self.material.cap_w
-                    + (self.material.porosity * si) * self.material.rho_i * self.material.cap_i
-                )
-                cap_coeff = rhoc_eff - self.material.latent_heat * self.material.rho_i * self.material.porosity * dsidT
-
-                # ===== Local Element Contributions =====
-                #   localK = landa * (Ge @ Ge.T) * detJ * w
-                #   localC = (Ne @ Ne.T) * cap_coeff * detJ * w
-                Ge = dNdx
-                localK = landa * (Ge @ Ge.T) * detJ * w
-                Ne = N.reshape(nn, 1)
-                localC = (Ne @ Ne.T) * cap_coeff * detJ * w
-
-                # Scatter-add into global sparse structure (COO accumulation)
-                ii = np.repeat(sctrT, nn)
-                jj = np.tile(sctrT, nn)
-                rows.extend(ii.tolist())
-                cols.extend(jj.tolist())
-                data_k.extend(localK.ravel().tolist())
-                data_c.extend(localC.ravel().tolist())
-
-        # ===== Global Matrix Assembly from COO Format =====
-        # Convert accumulated COO triplets to CSR for efficient solving
-        K_matrix = sp.coo_matrix((data_k, (rows, cols)), shape=(self.numnode, self.numnode)).tocsr()
-        C_matrix = sp.coo_matrix((data_c, (rows, cols)), shape=(self.numnode, self.numnode)).tocsr()
         if data_r:
             K_robin = sp.coo_matrix((data_r, (rows_r, cols_r)), shape=(self.numnode, self.numnode)).tocsr()
         else:
             K_robin = sp.csr_matrix((self.numnode, self.numnode))
-        A = K_matrix + K_robin + (C_matrix / float(self.solver.dt_seconds))
-        transient_field = self.T if t_prev is None else t_prev
-        b = fT + (C_matrix @ transient_field) / float(self.solver.dt_seconds)
-        return A, b, dirichlet_map
+        return fT, K_robin, dirichlet_map
+
+    # ---------------------------
+    # ELEMENT MATRICES
+    # ---------------------------
+    def _element_matrices(self) -> tuple[sp.csr_matrix, sp.csr_matrix]:
+        """Stiffness and capacity matrices, batched over the whole mesh.
+
+        This replaced a per-element Python loop that spent its time on
+        interpreter overhead around 4x4 operations -- numelem*nqp iterations,
+        each issuing a handful of tiny numpy calls and appending 64 Python
+        numbers to list accumulators -- rather than on floating-point work. The
+        geometry cache already stores everything in ``(numelem, nqp, ...)``
+        layout, so batching is a direct rewrite of the same expressions.
+
+        Two further redundancies went with it: the (row, col) triplets depend
+        only on the connectivity and are precomputed once by
+        ``_build_sparsity_pattern`` instead of rebuilt every step, and the
+        duplicate-summing sort inside ``coo_matrix.tocsr()`` is replaced by a
+        ``bincount`` into that fixed pattern.
+
+        The arithmetic is unchanged from the loop it replaced, which is kept in
+        ``software/tools/golden_reference.py`` and checked against this method to
+        machine precision by ``software/tools/verify_assembly_equivalence.py``.
+        """
+        m = self.material
+
+        # Temperature at every quadrature point of every element: (numelem, nqp)
+        T_qp = np.einsum("eqn,en->eq", self.elem_N, self.T[self.elem_sctr])
+
+        # ===== Auxiliary Relations: Phase-Change Logic (elementwise) =====
+        exponent = np.clip(m.k_parameter * (T_qp - m.tr_k), -100.0, 100.0)
+        X_exp = np.exp(exponent)
+        si = 1.0 / (1.0 + X_exp)
+        dsidT = -m.k_parameter * X_exp / (1.0 + X_exp) ** 2
+        sw = 1.0 - si
+
+        # Same geometric mixing law as _bulk_conductivity, over the whole array.
+        landa = (
+            self._lambda_solid_factor
+            * m.lambda_w ** (m.porosity * sw)
+            * m.lambda_i ** (m.porosity * si)
+        )
+        rhoc_eff = (
+            (1.0 - m.porosity) * m.rho_s * m.cap_s
+            + (m.porosity * sw) * m.rho_w * m.cap_w
+            + (m.porosity * si) * m.rho_i * m.cap_i
+        )
+        cap_coeff = rhoc_eff - m.latent_heat * m.rho_i * m.porosity * dsidT
+
+        # Fold detJ and the quadrature weight into the per-point coefficients.
+        weights = np.asarray(self.W2, dtype=float).reshape(1, -1)
+        gk = landa * self.elem_detJ * weights
+        gc = cap_coeff * self.elem_detJ * weights
+
+        # localK = landa * (Ge @ Ge.T) * detJ * w, summed over quadrature points
+        Ke = np.einsum("eqad,eqbd,eq->eab", self.elem_dNdx, self.elem_dNdx, gk)
+        # localC = (Ne @ Ne.T) * cap_coeff * detJ * w, likewise
+        Ce = np.einsum("eqa,eqb,eq->eab", self.elem_N, self.elem_N, gc)
+
+        return self._scatter_to_csr(Ke), self._scatter_to_csr(Ce)
+
+    def _scatter_to_csr(self, element_values: np.ndarray) -> sp.csr_matrix:
+        """Sum per-element blocks into the precomputed global CSR pattern."""
+        data = np.bincount(
+            self._scatter_map,
+            weights=element_values.ravel(),
+            minlength=self._scatter_nnz,
+        )
+        return sp.csr_matrix(
+            (data, self._csr_indices, self._csr_indptr),
+            shape=(self.numnode, self.numnode),
+        )
 
     # ---------------------------
     # BOUNDARY CONDITION APPLICATION
@@ -645,27 +719,74 @@ class FEMSolver2D:
     def compute_thaw_metrics(self) -> tuple[float | None, float | None, list[dict[str, float]]]:
         """Extract thaw-front metrics from temperature field.
 
-        For each depth level z in the mesh, finds the outermost thawed node
-        (max |x| with T >= threshold) to form the per-depth front envelope.
-        r_max and r_avg are computed from these front points only — not from
-        the entire thawed interior — making them consistent with the contour
-        method in thaw_front_reconstruction_server which averages over isotherm
-        points rather than all thawed nodes.
+        For each depth level z the front is the point where temperature crosses
+        the thaw threshold, located by linear interpolation between the last
+        thawed node and the first frozen node outside it. r_max and r_avg are
+        computed from these front points only -- not from the entire thawed
+        interior -- making them consistent with the contour method in
+        thaw_front_reconstruction_server, which averages over isotherm points
+        rather than all thawed nodes.
+
+        Why interpolate rather than take the outermost thawed node, which is what
+        this did originally: the node radii are the mesh spacing apart (10 mm on
+        the shipped mesh), so a node-based radius can only ever report 0, 10, 20
+        mm and advances in jumps as the front crosses each ring. Three
+        consequences, all of which showed up in practice:
+
+        * the forecast front lagged the measured one by about half an hour purely
+          from quantisation, which is why the predictive arm of the safety
+          monitor had never once fired before the measured arm;
+        * a parameter change that moves the front by less than one cell is
+          invisible, so the inversion could not be evaluated against r_max;
+        * the safety monitor's own thresholds fell between representable values,
+          giving the graded statuses a resolution of one mesh cell.
+
+        The interpolated radius is always within one cell of the node-based one
+        and never smaller, so this refines the previous answer rather than
+        contradicting it -- a property checked by
+        ``software/tools/verify_front_resolution.py``.
         """
         threshold_k = self._thaw_threshold_k()
-        thaw_mask = self.T >= threshold_k
-        if not np.any(thaw_mask):
+        if not np.any(self.T >= threshold_k):
             return None, None, []
 
         r_abs = np.abs(self.node[:, 0])
         z_coords = self.node[:, 1]
 
-        # One representative front point per depth level: outermost thawed node
         front_points: list[dict[str, float]] = []
-        for z in np.unique(z_coords[thaw_mask]):
-            depth_mask = thaw_mask & (z_coords == z)
-            front_r = float(np.max(r_abs[depth_mask]))
+        for z in np.unique(z_coords):
+            row = np.where(z_coords == z)[0]
+            order = np.argsort(r_abs[row])
+            row = row[order]
+            radii = r_abs[row]
+            temps = self.T[row]
+
+            thawed = temps >= threshold_k
+            if not np.any(thawed):
+                continue
+
+            # Outermost thawed node on this row. Scanning from the outside in
+            # rather than taking the first crossing keeps the envelope on the
+            # outer front when the row is not monotonic in temperature.
+            last = int(np.max(np.where(thawed)[0]))
+            if last >= len(radii) - 1:
+                # Thawed all the way to the domain edge: there is no crossing to
+                # interpolate, and the front is at least the edge radius.
+                front_r = float(radii[last])
+            else:
+                t_in = float(temps[last])
+                t_out = float(temps[last + 1])
+                span = t_in - t_out
+                # span <= 0 would mean the "frozen" neighbour is warmer, so there
+                # is no usable crossing; fall back to the node itself.
+                fraction = (t_in - threshold_k) / span if span > 0.0 else 0.0
+                fraction = min(max(fraction, 0.0), 1.0)
+                front_r = float(radii[last] + (radii[last + 1] - radii[last]) * fraction)
+
             front_points.append({"x_m": front_r, "z_m": float(z)})
+
+        if not front_points:
+            return None, None, []
 
         front_radii = np.array([p["x_m"] for p in front_points])
         return float(np.max(front_radii)), float(np.mean(front_radii)), front_points

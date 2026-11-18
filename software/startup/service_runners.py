@@ -186,6 +186,11 @@ def create_fem_forecast_server(
         sticky_material_override=fem_cfg.get("sticky_material_override", True),
         field_csv_dir=fem_cfg.get("field_csv_dir") if isinstance(fem_cfg.get("field_csv_dir"), str) else None,
         run_baseline=fem_cfg.get("run_baseline", False),
+        enable_lookahead=bool(fem_cfg.get("enable_lookahead", True)),
+        lookahead_hours=float(fem_cfg.get("lookahead_hours", 1.0)),
+        lookahead_samples=int(fem_cfg.get("lookahead_samples", 12)),
+        lookahead_stop_setpoint_c=float(fem_cfg.get("lookahead_stop_setpoint_c", 0.0)),
+        pipe_boundary_set=str(fem_cfg.get("pipe_boundary_set", "left")),
     )
 
 
@@ -260,18 +265,25 @@ def create_fem_inversion_server(
         relative_bounds=relative_bounds,
         loss=str(inversion_cfg.get("loss", "mse")),
         window_size=int(inversion_cfg.get("window_size", 5)),
+        window_stride=int(inversion_cfg.get("window_stride", 1)),
         min_snapshots=int(inversion_cfg.get("min_snapshots", 5)),
         min_sensors=int(inversion_cfg.get("min_sensors", 3)),
+        min_sensor_radius_m=float(inversion_cfg.get("min_sensor_radius_m", 0.0)),
         min_update_hours=float(inversion_cfg.get("min_update_hours", 0.0)),
         min_update_seconds=float(inversion_cfg.get("min_update_seconds", 0.0)),
+        warmup_hours=float(inversion_cfg.get("warmup_hours", 0.5)),
         relative_time_window=bool(inversion_cfg.get("relative_time_window", True)),
         min_horizon_hours=float(inversion_cfg.get("min_horizon_hours", 1e-3)),
         maxiter=int(inversion_cfg.get("maxiter", 40)),
         maxfun=int(inversion_cfg.get("maxfun", 80)),
+        scale_space=str(inversion_cfg.get("scale_space", "linear")),
+        prior_params=inversion_cfg.get("prior_params") if isinstance(inversion_cfg.get("prior_params"), dict) else None,
+        prior_weight=float(inversion_cfg.get("prior_weight", 0.0)),
         seed=int(inversion_cfg.get("seed", 42)) if inversion_cfg.get("seed") is not None else None,
         publish_material_override_boundary=bool(inversion_cfg.get("publish_material_override_boundary", False)),
         boundaries=boundaries,
         sensor_overrides=sensor_overrides,
+        config_path=str(inversion_cfg.get("config_path", "startup.conf")),
     )
 
 
@@ -395,6 +407,14 @@ def create_safety_monitor_server(
         critical_fraction=float(safety_cfg.get("critical_fraction", 0.9)),
         publish_on_change=bool(safety_cfg.get("publish_on_change", False)),
         site_id=str(safety_cfg.get("site_id", "default")),
+        confirm_updates=int(safety_cfg.get("confirm_updates", 3)),
+        release_fraction=float(safety_cfg.get("release_fraction", 0.85)),
+        forecast_max_age_hours=float(safety_cfg.get("forecast_max_age_hours", 0.05)),
+        measurement_max_age_hours=float(safety_cfg.get("measurement_max_age_hours", 0.05)),
+        fail_safe_on_stale_measurement=bool(
+            safety_cfg.get("fail_safe_on_stale_measurement", True)),
+        latch_alert=bool(safety_cfg.get("latch_alert", True)),
+        f2_action=str(safety_cfg.get("f2_action", "stop")),
     )
 
 
@@ -717,6 +737,7 @@ def create_heater_actuation_server(
         action_on_ok=str(heater_cfg.get("action_on_ok", "hold")),
         setpoint_on_alert=heater_cfg.get("setpoint_on_alert"),
         setpoint_on_ok=heater_cfg.get("setpoint_on_ok"),
+        setpoint_on_reduce=heater_cfg.get("setpoint_on_reduce"),
         publish_on_change=bool(heater_cfg.get("publish_on_change", False)),
         site_id=str(heater_cfg.get("site_id", "default")),
     )

@@ -31,8 +31,8 @@ DOMAIN_RADIUS_M = 0.24
 DOMAIN_DEPTH_M = 0.30
 THERMOSYPHON_RADIUS_M = 0.0075
 
-SAFE_PCT_DEFAULT = 0.80
-CAUTION_PCT_DEFAULT = 0.95
+SAFE_PCT_DEFAULT = 0.60
+CAUTION_PCT_DEFAULT = 0.90
 
 _MAX_ANIMATION_FRAMES = 40   # hard cap on Plotly frames sent to browser
 _ANIMATION_GRID_RES   = 80   # lower grid resolution for animation (vs 120 for static)
@@ -464,6 +464,32 @@ def _filter_forecast_by_horizon(df: pd.DataFrame, horizon_hours: float, toleranc
     return filtered[filtered["horizon_hours"].sub(horizon_hours).abs() <= tolerance]
 
 
+def _filter_data_as_of(data: dict[str, pd.DataFrame], as_of_hours: float) -> dict[str, pd.DataFrame]:
+    """Restrict fetched frames to logged data up to ``as_of_hours`` of data time.
+
+    Display only: nothing is written back. Frames with no ``time_hours`` column
+    are cut at the ingest time of the last thaw-front row inside the view.
+    """
+    cutoff = None
+    thaw = data.get("thaw_metrics")
+    if thaw is not None and not thaw.empty and {"time_hours", "_time"} <= set(thaw.columns):
+        kept = thaw[_safe_float_series(thaw["time_hours"]) <= as_of_hours]
+        if not kept.empty:
+            cutoff = pd.to_datetime(kept["_time"], errors="coerce", utc=True).max()
+
+    filtered: dict[str, pd.DataFrame] = {}
+    for name, df in data.items():
+        if df is None or df.empty:
+            filtered[name] = df
+        elif "time_hours" in df.columns:
+            filtered[name] = df[_safe_float_series(df["time_hours"]) <= as_of_hours].copy()
+        elif "_time" in df.columns and cutoff is not None:
+            filtered[name] = df[pd.to_datetime(df["_time"], errors="coerce", utc=True) <= cutoff].copy()
+        else:
+            filtered[name] = df
+    return filtered
+
+
 # -----------------------------
 # Visualization builders
 # -----------------------------
@@ -486,9 +512,9 @@ def _build_safety_gauge(r_max: float | None, limit_m: float, safe_pct: float, ca
         go.Indicator(
             mode="gauge+number",
             value=value_mm,
-            number={"suffix": " mm", "font": {"size": 36}},
+            number={"suffix": " mm", "valueformat": ".1f", "font": {"size": 36}},
             gauge={
-                "axis": {"range": [0, max(limit_mm * 1.1, 10.0)]},
+                "axis": {"range": [0, limit_mm]},
                 "bar": {"color": bar_color},
                 "bgcolor": "#0f172a",
                 "borderwidth": 1,
@@ -500,10 +526,10 @@ def _build_safety_gauge(r_max: float | None, limit_m: float, safe_pct: float, ca
                 ],
                 "threshold": {"line": {"color": "#dc2626", "width": 4}, "value": limit_mm},
             },
-            title={"text": "Safety gauge", "font": {"size": 16}},
+            title={"text": f"Safety gauge (limit {limit_mm:.0f} mm)", "font": {"size": 16}},
         )
     )
-    fig.update_layout(height=260, margin=dict(l=20, r=20, t=40, b=10))
+    fig.update_layout(height=280, margin=dict(l=40, r=40, t=70, b=10))
     return fig
 
 
@@ -923,121 +949,134 @@ def _front_geometry_plot(
     thaw_points: pd.DataFrame,
     forecast_points: pd.DataFrame,
     limit_m: float,
-    sensors: pd.DataFrame | None = None,
 ) -> go.Figure | None:
+    """The measured and forecast thaw fronts at the latest instant, against the limit.
+
+    One profile per source: radial front position against depth, plus the
+    user-set safety limit as a vertical line. That is the whole plot -- the
+    question it answers is "how close is the front to the limit, and does the
+    model agree about it", and anything else on these axes competes with it.
+
+    Two things this has to get right that the earlier version did not:
+
+    * **One horizon per curve.** ``fem_forecast_points`` is written with a
+      ``horizon_hours`` field, so a single ``time_hours`` can hold several
+      forecast fronts at once. Filtering on time alone merged them into one
+      polyline and then let ``drop_duplicates`` keep whichever horizon happened
+      to sort first, which drew a front that existed at no horizon at all.
+    * **An axis scaled to the fronts.** The domain is 240 mm wide and the fronts
+      live near 40 mm, so a full-domain axis pushed the entire plot into its
+      leftmost sixth. The range now follows the data and the limit line.
+    """
     if (thaw_points is None or thaw_points.empty) and (forecast_points is None or forecast_points.empty):
+        return None
+
+    def _clean(points: pd.DataFrame) -> pd.DataFrame:
+        if points is None or points.empty:
+            return pd.DataFrame()
+        if not {"time_hours", "x_m", "z_m"}.issubset(points.columns):
+            return pd.DataFrame()
+        df = points.copy()
+        for column in ("time_hours", "x_m", "z_m"):
+            df[column] = _safe_float_series(df[column])
+        if "horizon_hours" in df.columns:
+            df["horizon_hours"] = _safe_float_series(df["horizon_hours"])
+        return df.dropna(subset=["time_hours", "x_m", "z_m"])
+
+    def _latest_front(points: pd.DataFrame) -> tuple[pd.DataFrame, float | None, float | None]:
+        """Newest front as a depth-ordered profile, from a single horizon."""
+        df = _clean(points)
+        if df.empty:
+            return pd.DataFrame(), None, None
+        latest_time = float(df["time_hours"].max())
+        df = df[np.isclose(df["time_hours"], latest_time, atol=1e-9)]
+        horizon = None
+        if "horizon_hours" in df.columns and df["horizon_hours"].notna().any():
+            # The longest horizon written at this instant is the forecast the
+            # safety rules are evaluated against, so it is the one to draw.
+            horizon = float(df["horizon_hours"].max())
+            df = df[np.isclose(df["horizon_hours"], horizon, atol=1e-9)]
+        df = df.copy()
+        df["x_m"] = df["x_m"].abs()
+        # Deepest-first ordering, and one radius per depth: a front is a function
+        # of depth, and two radii at one depth is a duplicate record, not a shape.
+        df = df.sort_values(["z_m", "x_m"]).drop_duplicates(subset=["z_m"], keep="last")
+        return df, latest_time, horizon
+
+    measured, measured_time, _ = _latest_front(thaw_points)
+    forecast, forecast_time, forecast_horizon = _latest_front(forecast_points)
+    if measured.empty and forecast.empty:
         return None
 
     fig = go.Figure()
 
-    def _densify_front(points: pd.DataFrame, depth_samples: int = 120) -> pd.DataFrame:
-        if points is None or points.empty or "x_m" not in points.columns or "z_m" not in points.columns:
-            return pd.DataFrame()
-        df = points.dropna(subset=["x_m", "z_m"]).copy()
-        if df.empty:
-            return pd.DataFrame()
-        df["x_m"] = df["x_m"].astype(float).abs()
-        df["z_m"] = df["z_m"].astype(float)
-        df = df.sort_values("z_m")
-        df = df.drop_duplicates(subset=["z_m"])
-        if len(df) < 2:
-            return df
-        z_min, z_max = float(df["z_m"].min()), float(df["z_m"].max())
-        z_grid = np.linspace(z_min, z_max, depth_samples)
-        x_grid = np.interp(z_grid, df["z_m"].to_numpy(), df["x_m"].to_numpy())
-        return pd.DataFrame({"x_m": x_grid, "z_m": z_grid})
-
-    def _latest_front(points: pd.DataFrame) -> tuple[pd.DataFrame, float | None]:
-        if points is None or points.empty:
-            return pd.DataFrame(), None
-        required = {"time_hours", "x_m", "z_m"}
-        if not required.issubset(points.columns):
-            return pd.DataFrame(), None
-        df = points.copy()
-        df["time_hours"] = _safe_float_series(df["time_hours"])
-        df["x_m"] = _safe_float_series(df["x_m"])
-        df["z_m"] = _safe_float_series(df["z_m"])
-        df = df.dropna(subset=["time_hours", "x_m", "z_m"])
-        if df.empty:
-            return pd.DataFrame(), None
-        latest_time = float(df["time_hours"].max())
-        df = df[np.isclose(df["time_hours"], latest_time, atol=1e-9)].copy()
-        df["x_m"] = df["x_m"].abs()
-        df = df.sort_values("z_m").drop_duplicates(subset=["z_m"])
-        return df, latest_time
-
-    measured_raw, measured_time = _latest_front(thaw_points)
-    measured_dense = _densify_front(measured_raw)
-    measured_plot = measured_dense if not measured_dense.empty else measured_raw
-    if not measured_plot.empty:
+    if not measured.empty:
         fig.add_trace(
             go.Scatter(
-                x=measured_plot["x_m"] * 1000.0,
-                y=measured_plot["z_m"] * 1000.0,
-                mode="lines" if len(measured_plot) > 1 else "markers",
+                x=measured["x_m"] * 1000.0,
+                y=measured["z_m"] * 1000.0,
+                mode="lines+markers" if len(measured) > 1 else "markers",
                 line={"color": "#2563eb", "width": 3},
-                marker={"size": 8, "color": "#2563eb"},
-                name=f"Measured (t={measured_time:.2f}h)" if measured_time is not None else "Measured",
+                marker={"size": 6, "color": "#2563eb"},
+                name="Measured" + (f" (t = {measured_time:.2f} h)" if measured_time is not None else ""),
+                hovertemplate="measured<br>r = %{x:.1f} mm<br>depth = %{y:.0f} mm<extra></extra>",
             )
         )
 
-    forecast_raw, forecast_time = _latest_front(forecast_points)
-    forecast_dense = _densify_front(forecast_raw)
-    forecast_plot = forecast_dense if not forecast_dense.empty else forecast_raw
-    if not forecast_plot.empty:
+    if not forecast.empty:
+        label = "Forecast"
+        if forecast_horizon:
+            label += f" (+{forecast_horizon * 60.0:.0f} min)"
+        elif forecast_time is not None:
+            label += f" (t = {forecast_time:.2f} h)"
         fig.add_trace(
             go.Scatter(
-                x=forecast_plot["x_m"] * 1000.0,
-                y=forecast_plot["z_m"] * 1000.0,
-                mode="lines" if len(forecast_plot) > 1 else "markers",
+                x=forecast["x_m"] * 1000.0,
+                y=forecast["z_m"] * 1000.0,
+                mode="lines+markers" if len(forecast) > 1 else "markers",
                 line={"color": "#dc2626", "width": 3, "dash": "dash"},
-                marker={"size": 8, "color": "#dc2626"},
-                name=f"Forecast (t={forecast_time:.2f}h)" if forecast_time is not None else "Forecast",
+                marker={"size": 6, "color": "#dc2626"},
+                name=label,
+                hovertemplate="forecast<br>r = %{x:.1f} mm<br>depth = %{y:.0f} mm<extra></extra>",
             )
         )
 
+    limit_mm = float(limit_m) * 1000.0
     fig.add_vline(
-        x=limit_m * 1000.0,
-        line_width=3,
-        line_color="#dc2626",
-        annotation_text="Safety limit",
+        x=limit_mm,
+        line_width=2,
+        line_dash="dot",
+        line_color="#b3261e",
+        annotation_text=f"Safety limit {limit_mm:.0f} mm",
         annotation_position="top right",
+        annotation_font={"color": "#b3261e", "size": 11},
     )
 
-    max_x_mm = DOMAIN_RADIUS_M * 1000.0
-    for frame in (thaw_points, forecast_points):
-        if frame is not None and not frame.empty and "x_m" in frame.columns:
-            try:
-                max_x_mm = max(max_x_mm, float(frame["x_m"].abs().max()) * 1000.0 * 1.1)
-            except (TypeError, ValueError):
-                pass
+    # Axis follows the fronts and the limit, with headroom, instead of the full
+    # 240 mm domain -- otherwise a 40 mm front occupies a sixth of the plot.
+    front_max = 0.0
+    for frame in (measured, forecast):
+        if not frame.empty:
+            front_max = max(front_max, float(frame["x_m"].max()) * 1000.0)
+    x_max = max(front_max, limit_mm) * 1.25 or DOMAIN_RADIUS_M * 1000.0
+    x_max = min(x_max, DOMAIN_RADIUS_M * 1000.0)
+
+    depth_max = DOMAIN_DEPTH_M * 1000.0
+    for frame in (measured, forecast):
+        if not frame.empty:
+            depth_max = max(depth_max, float(frame["z_m"].max()) * 1000.0)
 
     fig.update_layout(
-        title="Thaw-front evolution and forecast",
-        xaxis_title="Radial distance (mm)",
+        title="Thaw front: measured vs forecast",
+        xaxis_title="Radial distance from pipe (mm)",
         yaxis_title="Depth (mm)",
         height=440,
-        margin=dict(l=50, r=30, t=50, b=40),
+        margin=dict(l=60, r=30, t=60, b=45),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        hovermode="closest",
     )
-    diag_parts: list[str] = []
-    if measured_time is not None:
-        diag_parts.append(f"Measured points: {len(measured_raw)} at t={measured_time:.2f}h")
-    if forecast_time is not None:
-        diag_parts.append(f"Forecast points: {len(forecast_raw)} at t={forecast_time:.2f}h")
-    if diag_parts:
-        fig.add_annotation(
-            xref="paper",
-            yref="paper",
-            x=0.01,
-            y=1.08,
-            xanchor="left",
-            showarrow=False,
-            text=" | ".join(diag_parts),
-            font={"size": 11, "color": "#94a3b8"},
-        )
-    fig.update_xaxes(range=[0, max_x_mm])
-    fig.update_yaxes(range=[DOMAIN_DEPTH_M * 1000.0, 0.0], autorange=False)
+    fig.update_xaxes(range=[0, x_max])
+    fig.update_yaxes(range=[depth_max, 0.0], autorange=False)
     return fig
 
 
@@ -1046,7 +1085,7 @@ def _unified_radius_plot(
     forecast_metrics: pd.DataFrame,
     heater_actions: pd.DataFrame,
     limit_m: float,
-    limit_min_m: float = 0.0,
+    release_m: float = 0.0,
     warn_fraction: float = 0.6,
     critical_fraction: float = 0.9,
 ) -> go.Figure | None:
@@ -1071,11 +1110,11 @@ def _unified_radius_plot(
     fig.add_trace(
         go.Scatter(
             x=df_measured["time_hours"],
-            y=df_measured["radius_max_m"],
+            y=df_measured["radius_max_m"] * 1000.0,
             mode="lines",
             line={"color": "#1f77b4", "width": 3},
             name="Measured r_max",
-            hovertemplate="Time: %{x:.2f}h<br>r_max: %{y:.3f}m<extra></extra>",
+            hovertemplate="Time: %{x:.2f}h<br>r_max: %{y:.1f} mm<extra></extra>",
         )
     )
 
@@ -1085,11 +1124,11 @@ def _unified_radius_plot(
             fig.add_trace(
                 go.Scatter(
                     x=df_rmin["time_hours"],
-                    y=df_rmin["radius_min_m"],
+                    y=df_rmin["radius_min_m"] * 1000.0,
                     mode="lines",
                     line={"color": "#17becf", "width": 3},
                     name="Measured r_min",
-                    hovertemplate="Time: %{x:.2f}h<br>r_min: %{y:.3f}m<extra></extra>",
+                    hovertemplate="Time: %{x:.2f}h<br>r_min: %{y:.1f} mm<extra></extra>",
                 )
             )
 
@@ -1105,104 +1144,102 @@ def _unified_radius_plot(
         fig.add_trace(
             go.Scatter(
                 x=df_forecast["time_forecast"],
-                y=df_forecast["radius_max_m"],
+                y=df_forecast["radius_max_m"] * 1000.0,
                 mode="lines",
                 line={"color": "#d62728", "width": 3, "dash": "dash"},
                 name="Forecast r_max",
-                hovertemplate="Forecast: %{x:.2f}h<br>r_max: %{y:.3f}m<extra></extra>",
+                hovertemplate="Forecast: %{x:.2f}h<br>r_max: %{y:.1f} mm<extra></extra>",
             )
         )
 
+    limit_mm = limit_m * 1000.0
     fig.add_hline(
-        y=limit_m,
+        y=limit_mm,
         line_width=4,
         line_color="#b91c1c",
-        annotation_text=f"LIMIT MAX ({limit_m:.3f}m)",
-        annotation_position="top right",
+        annotation_text=f"r_lim = {limit_mm:.0f} mm",
+        annotation_position="top left",
+        annotation_font_color="#b91c1c",
     )
 
-    measured_max = float(df_measured["radius_max_m"].max())
-    y_max = max(limit_m * 1.3, measured_max * 1.2)
+    measured_max_mm = float(df_measured["radius_max_m"].max()) * 1000.0
+    y_max = max(limit_mm * 1.3, measured_max_mm * 1.2)
     fig.add_hrect(
-        y0=limit_m,
+        y0=limit_mm,
         y1=y_max,
         fillcolor="rgba(239,68,68,0.12)",
         line_width=0,
     )
 
-    # Warning / critical bands as r_max approaches LIMIT MAX. These mirror the
-    # safety_monitor's graded statuses: [warn, critical)*limit -> warning,
-    # [critical, 1)*limit -> critical. The heater keeps thawing through both;
-    # only crossing LIMIT MAX stops it.
-    warn_y = warn_fraction * limit_m
-    crit_y = critical_fraction * limit_m
-    if 0.0 < warn_y < crit_y < limit_m:
+    # Warning / critical bands as r_max approaches r_lim. Warning is the M_warn
+    # predicate; critical is display-only and takes no part in the decision. The
+    # heater keeps thawing through both; only crossing r_lim stops it.
+    warn_mm = warn_fraction * limit_mm
+    crit_mm = critical_fraction * limit_mm
+    if 0.0 < warn_mm < crit_mm < limit_mm:
         fig.add_hrect(
-            y0=warn_y,
-            y1=crit_y,
+            y0=warn_mm,
+            y1=crit_mm,
             fillcolor="rgba(234,179,8,0.10)",
             line_width=0,
         )
         fig.add_hrect(
-            y0=crit_y,
-            y1=limit_m,
+            y0=crit_mm,
+            y1=limit_mm,
             fillcolor="rgba(249,115,22,0.14)",
             line_width=0,
         )
         fig.add_hline(
-            y=warn_y,
+            y=warn_mm,
             line_width=1.5,
             line_dash="dot",
-            line_color="#eab308",
-            annotation_text=f"WARN ({warn_fraction*100:.0f}% = {warn_y:.3f}m)",
+            line_color="#a16207",
+            annotation_text=f"Warning {warn_mm:.0f} mm",
             annotation_position="top left",
-            annotation_font_color="#eab308",
+            annotation_font_color="#a16207",
         )
         fig.add_hline(
-            y=crit_y,
+            y=crit_mm,
             line_width=1.5,
             line_dash="dot",
-            line_color="#f97316",
-            annotation_text=f"CRITICAL ({critical_fraction*100:.0f}% = {crit_y:.3f}m)",
+            line_color="#c2410c",
+            annotation_text=f"Critical {crit_mm:.0f} mm (display only)",
             annotation_position="top left",
-            annotation_font_color="#f97316",
+            annotation_font_color="#c2410c",
         )
 
-    if limit_min_m > 0:
+    if release_m > 0:
+        release_mm = release_m * 1000.0
         fig.add_hline(
-            y=limit_min_m,
-            line_width=4,
+            y=release_mm,
+            line_width=1.5,
+            line_dash="dash",
             line_color="#2563eb",
-            annotation_text=f"LIMIT MIN ({limit_min_m:.3f}m)",
-            annotation_position="bottom right",
-        )
-        fig.add_hrect(
-            y0=0.0,
-            y1=limit_min_m,
-            fillcolor="rgba(37,99,235,0.10)",
-            line_width=0,
+            annotation_text=f"Release {release_mm:.0f} mm",
+            annotation_position="bottom left",
+            annotation_font_color="#2563eb",
         )
 
     latest_time = float(df_measured["time_hours"].iloc[-1])
-    latest_r = float(df_measured["radius_max_m"].iloc[-1])
-    if latest_r >= limit_m:
+    latest_mm = float(df_measured["radius_max_m"].iloc[-1]) * 1000.0
+    if latest_mm >= limit_mm:
         zone_label, zone_color = "ALERT (heater STOP)", "#ef4444"
-    elif latest_r >= crit_y:
+    elif latest_mm >= crit_mm:
         zone_label, zone_color = "CRITICAL (heating)", "#f97316"
-    elif latest_r >= warn_y:
+    elif latest_mm >= warn_mm:
         zone_label, zone_color = "WARNING (heating)", "#eab308"
     else:
         zone_label, zone_color = "OK (heating)", "#22c55e"
     fig.add_trace(
         go.Scatter(
             x=[latest_time],
-            y=[latest_r],
+            y=[latest_mm],
             mode="markers",
             name=f"Current r_max — {zone_label}",
             marker=dict(size=16, color=zone_color, line=dict(width=2, color="white")),
             hovertemplate=(
                 f"NOW — {zone_label}<br>Time: {latest_time:.2f}h<br>"
-                f"r_max: {latest_r:.3f}m<extra></extra>"
+                f"r_max: {latest_mm:.1f} mm<extra></extra>"
             ),
         )
     )
@@ -1228,7 +1265,7 @@ def _unified_radius_plot(
     )
     fig.update_xaxes(title_text="Time (hours)", showgrid=True, gridcolor="rgba(148,163,184,0.25)")
     fig.update_yaxes(
-        title_text="Thaw radius (m)",
+        title_text="Thaw radius (mm)",
         range=[0, y_max],
         showgrid=True,
         gridcolor="rgba(148,163,184,0.25)",
@@ -2801,7 +2838,7 @@ def main() -> None:
     max_points = int(viz_cfg.get("max_points", 3000))
     refresh_seconds = int(viz_cfg.get("refresh_seconds", 20))
     r_limit = float(viz_cfg.get("r_limit_m", safety_cfg.get("limit_radius_m", 0.1)))
-    r_limit_min = float(viz_cfg.get("r_limit_min_m", safety_cfg.get("limit_min_radius_m", 0.0)))
+    release_fraction = float(viz_cfg.get("release_fraction", safety_cfg.get("release_fraction", 0.5)))
     warn_fraction = float(viz_cfg.get("warn_fraction", safety_cfg.get("warn_fraction", 0.6)))
     critical_fraction = float(viz_cfg.get("critical_fraction", safety_cfg.get("critical_fraction", 0.9)))
     safe_pct = float(viz_cfg.get("safe_pct", SAFE_PCT_DEFAULT))
@@ -2814,17 +2851,17 @@ def main() -> None:
     with st.sidebar:
         st.header("Dashboard Controls")
         site_id = st.text_input("Site ID", site_id)
-        history_hours = st.slider("History window (hours)", 0.5, 12.0, history_hours, 0.5)
+        history_hours = st.slider("History window (hours)", 0.5, 72.0, history_hours, 0.5)
         max_points = st.slider("Max points", 500, 12000, max_points, 500)
         refresh_seconds = st.slider("Refresh every (seconds)", 5, 120, refresh_seconds, 5)
         st.divider()
         r_limit = st.number_input("Limit max r_limit (m)", min_value=0.01, max_value=1.0, value=r_limit, step=0.01)
-        r_limit_min = st.number_input(
-            "Limit min r_limit_min (m)", min_value=0.0, max_value=float(r_limit), value=min(r_limit_min, float(r_limit)), step=0.01
-        )
-        safe_pct = st.slider("Safe threshold (%)", 60, 90, int(safe_pct * 100), 1) / 100.0
-        caution_pct = st.slider("Alert threshold (%)", 85, 99, int(caution_pct * 100), 1) / 100.0
-        forecast_horizon_min = st.slider("Forecast horizon (minutes)", 5, 120, 30, 5)
+        r_release = release_fraction * r_limit
+        st.caption(f"Release radius: {r_release * 1000.0:.0f} mm ({release_fraction:.1f} x r_lim)")
+        safe_pct = st.slider("Gauge warning band (%)", 60, 90, int(safe_pct * 100), 1) / 100.0
+        caution_pct = st.slider("Gauge critical band (%, display only)", 85, 99, int(caution_pct * 100), 1) / 100.0
+        forecast_horizon_min = st.slider("Forecast horizon (minutes)", 5, 120, 10, 5)
+        as_of_hours = st.number_input("View as of data time (h, 0 = live)", min_value=0.0, value=0.0, step=0.25)
         st.divider()
         animate_field = st.checkbox(
             "Animate field plots",
@@ -2875,9 +2912,12 @@ def main() -> None:
                     st.rerun()
 
     @st.cache_data(ttl=refresh_seconds)
-    def _fetch_data(site_id: str, history_hours: float, max_points: int) -> dict[str, pd.DataFrame]:
+    def _fetch_data(site_id: str, history_hours: float, max_points: int, as_of_hours: float) -> dict[str, pd.DataFrame]:
         influx = _build_influx()
         range_start = _range_start(history_hours)
+        # The front plots draw the latest snapshot. Live needs the newest rows; a
+        # historical view filters by data time afterwards, so it needs them all.
+        point_limit = 0 if as_of_hours > 0 else max_points
         data = {
             "sensors": influx.query_sensor_temperature_2d(
                 site=site_id,
@@ -2905,8 +2945,9 @@ def main() -> None:
             ),
             "thaw_points": influx.query_thaw_front_points(
                 site=site_id,
-                limit=max_points,
+                limit=point_limit,
                 range_start=range_start,
+                newest=True,
             ),
             "forecast_metrics": influx.query_fem_forecast_metrics(
                 site=site_id,
@@ -2915,8 +2956,9 @@ def main() -> None:
             ),
             "forecast_points": influx.query_fem_forecast_points(
                 site=site_id,
-                limit=max_points,
+                limit=point_limit,
                 range_start=range_start,
+                newest=True,
             ),
             "safety_alerts": influx.query_safety_alerts(
                 site=site_id,
@@ -2950,7 +2992,10 @@ def main() -> None:
         influx.close()
         return data
 
-    data = _fetch_data(site_id, history_hours, max_points)
+    data = _fetch_data(site_id, history_hours, max_points, as_of_hours)
+    if as_of_hours > 0:
+        data = _filter_data_as_of(data, as_of_hours)
+        st.info(f"Historical view: logged data up to t = {as_of_hours:.2f} h. Set the sidebar time to 0 for live data.")
     thaw_metrics = data["thaw_metrics"]
     forecast_horizon_hours = float(forecast_horizon_min) / 60.0
     forecast_metrics = _filter_forecast_by_horizon(data["forecast_metrics"], forecast_horizon_hours)
@@ -3020,7 +3065,11 @@ def main() -> None:
             else:
                 st.caption("r_max not available yet.")
         with flow_col:
-            st.markdown(_build_data_flow_html(data, refresh_seconds), unsafe_allow_html=True)
+            # The loop LEDs report how fresh the data is now, which a past view can't show.
+            if as_of_hours > 0:
+                st.caption("Live loop status is hidden in the historical view.")
+            else:
+                st.markdown(_build_data_flow_html(data, refresh_seconds), unsafe_allow_html=True)
 
         st.divider()
 
@@ -3362,7 +3411,7 @@ def main() -> None:
 
         st.divider()
 
-        fig = _front_geometry_plot(data["thaw_points"], data["forecast_points"], r_limit, data["sensors"])
+        fig = _front_geometry_plot(data["thaw_points"], data["forecast_points"], r_limit)
         if fig:
             _chart(fig, key="front_geometry", basename="thaw_front_geometry")
         else:
@@ -3381,7 +3430,7 @@ def main() -> None:
             forecast_metrics,
             heater_actions,
             r_limit,
-            r_limit_min,
+            r_release,
             warn_fraction,
             critical_fraction,
         )
