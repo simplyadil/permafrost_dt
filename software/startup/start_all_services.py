@@ -1,16 +1,19 @@
-"""Convenience launcher for the permafrost digital twin.
+"""Launcher for the permafrost digital twin.
 
-Uncomment the services you want to start and run:
+    python -m software.startup.start_all_services --mode sim
 
-    python -m software.startup.start_all_services
+Modes:
+    sim       no hardware; feed data with ``software.tools.replay_csv``
+    sensors   live CR1000 sensing only (no heater)
+    hardware  full closed loop: CR1000 + safety rules + PolyScience circulator
 
-Each selected service runs in its own daemon process, so stopping the launcher
-will shut everything down. Docker helpers for RabbitMQ/InfluxDB are provided
-but commented out so you can decide whether to trigger them.
+RabbitMQ and InfluxDB are (re)started in Docker first unless ``--no-docker``
+is given. Each service runs in its own daemon process; Ctrl+C stops them all.
 """
 
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -35,7 +38,7 @@ from software.startup.utils.daemon import start_as_daemon
 from software.startup.utils.config import configure_logging, load_startup_config
 
 
-# Run mode — selects which services start:
+# Default run mode (override with --mode) — selects which services start:
 #   "sim"      : no hardware. Feed data with replay_csv; full processing + FEM +
 #                the safety/heater decision loop (no real circulator is driven).
 #   "sensors"  : live CR1000 sensing, NO heater. Preview the real temperature field.
@@ -161,14 +164,38 @@ def _check_serial_port_conflicts(config: dict, services_to_start: list[str]) -> 
         used[port] = service_name
 
 
-def main() -> None:
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Start the permafrost digital twin services.")
+    parser.add_argument(
+        "--mode",
+        choices=sorted(_VALID_MODES),
+        default=MODE,
+        help="sim = replay data, no hardware (default); sensors = live CR1000 only; "
+        "hardware = full closed loop with the PolyScience circulator.",
+    )
+    parser.add_argument(
+        "--no-docker",
+        action="store_true",
+        help="Do not (re)start the RabbitMQ/InfluxDB containers; use ones already running.",
+    )
+    parser.add_argument(
+        "--config",
+        default="startup.conf",
+        help="Path to the startup configuration file (default: startup.conf).",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> None:
+    args = _parse_args(argv)
+    mode = args.mode
     configure_logging()
     fem_fields_dir = Path("artifacts/fem_fields")
     if fem_fields_dir.exists():
         for csv_file in fem_fields_dir.glob("*.csv"):
             csv_file.unlink()
 
-    config = load_startup_config()
+    config = load_startup_config(args.config)
 
     rabbit_cfg = config.get("rabbitmq", {})
     influx_cfg_values = config.get("influxdb", {})
@@ -183,13 +210,13 @@ def main() -> None:
     pipe_boundary_cfg = config.get("pipe_boundary", {})
     polyscience_cfg = config.get("polyscience_control", {})
 
-    if MODE not in _VALID_MODES:
-        raise ValueError(f"Unknown MODE '{MODE}'. Choose one of {sorted(_VALID_MODES)}.")
+    if mode not in _VALID_MODES:
+        raise ValueError(f"Unknown mode '{mode}'. Choose one of {sorted(_VALID_MODES)}.")
 
     # Confirm the two safety-critical setpoints before anything starts. Mutates
     # safety_cfg / heater_cfg (references into `config`) so the values below are
     # carried into the daemons via config_dict. Only the full hardware loop heats.
-    if MODE == "hardware":
+    if mode == "hardware":
         _preflight_operator_inputs(config)
 
     influx_defaults = build_influx_config(influx_cfg_values)
@@ -239,31 +266,34 @@ def main() -> None:
     # inversion (fem_inversion) that calibrates soil parameters from the observed
     # field. Needed for the forecast plots, the predictive safety stop, and the
     # inverted-parameter evolution figure; not required for the raw temp field.
-    if MODE in ("sim", "hardware"):
+    if mode in ("sim", "hardware"):
         services_to_start += ["pipe_boundary", "fem_forecast", "fem_inversion"]
 
     # Live CR1000 sensing bridge (opens the real datalogger serial port).
-    if MODE in ("sensors", "hardware"):
+    if mode in ("sensors", "hardware"):
         services_to_start += ["cr1000_publisher"]
 
     # Closed-loop control logic: safety rule engine + heater command service.
     # Runs in sim too so the full alert -> actuation decision loop can be shown
     # without hardware (no real circulator is driven — see polyscience below).
-    if MODE in ("sim", "hardware"):
+    if mode in ("sim", "hardware"):
         services_to_start += ["safety_monitor", "heater_actuation"]
 
     # PolyScience actuation bridge drives the physical circulator over serial,
     # so it only runs in the full hardware loop.
-    if MODE == "hardware":
+    if mode == "hardware":
         services_to_start += ["polyscience_control"]
 
     # Guard against two enabled services grabbing the same serial port — pyserial
     # opens COM ports exclusively, so a shared port would make one of them fail.
     _check_serial_port_conflicts(config, services_to_start)
 
-    # Optionally start local Docker dependencies first.
-    start_docker_rabbitmq()
-    start_docker_influxdb()
+    # Start local Docker dependencies first (fresh containers each run).
+    if not args.no_docker:
+        start_docker_rabbitmq()
+        start_docker_influxdb()
+
+    print(f"Starting permafrost DT in '{mode}' mode: {', '.join(services_to_start)}")
 
     processes = []
 

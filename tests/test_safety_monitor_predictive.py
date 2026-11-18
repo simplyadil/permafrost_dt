@@ -7,7 +7,7 @@ and the whole file runs in well under a second.
 What is covered here is the decision table and the mechanics that surround it:
 confirmation, hysteresis, staleness and the alert latch. What is *not* covered
 here is whether the forecast is any good -- that is a numerics question, and it
-belongs to ``software/tools/verify_prediction_skill.py``. The two fail
+belongs to ``verify_prediction_skill.py`` (development repo). The two fail
 independently: a failure here means the rules mishandled their inputs, a failure
 there means the model moved.
 """

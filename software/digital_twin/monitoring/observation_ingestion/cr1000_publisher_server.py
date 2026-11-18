@@ -7,7 +7,7 @@ downstream service (ingestion, boundary-condition builder, thaw-front
 reconstruction, FEM, inversion) receives the same live feed.
 
 The fetch engine is the batched/atomic/gap-free PakBus collector validated in
-``software/tools/CR1000_monitor.py``. Key properties:
+``software/tools/cr1000_monitor.py``. Key properties:
 
 * **Batched collect** — the table is too wide for one PakBus response, so each
   poll issues several field-subset commands (with retries).
@@ -47,7 +47,7 @@ FLUID_EXCHANGE = "permafrost.fluid"
 SCHEMA_PATH = Path(__file__).resolve().parents[2] / "communication" / "schemas" / "sensor_message_2d.json"
 FLUID_SCHEMA_PATH = Path(__file__).resolve().parents[2] / "communication" / "schemas" / "fluid_message.json"
 
-# PakBus collect tuning (mirrors the validated CR1000_monitor.py tool).
+# PakBus collect tuning (mirrors the validated cr1000_monitor.py tool).
 _MAX_RESP_PAYLOAD = 900     # bytes the logger packs into one collect response
 _MAX_CMD_FIELDS = 60        # max field indices per collect command
 _BATCH_MAX_RETRIES = 3

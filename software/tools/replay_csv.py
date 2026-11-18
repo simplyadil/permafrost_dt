@@ -20,6 +20,9 @@ SENSOR_SCHEMA = Path(__file__).resolve().parents[1] / "digital_twin" / "communic
 FLUID_EXCHANGE = "permafrost.fluid"
 FLUID_SCHEMA = Path(__file__).resolve().parents[1] / "digital_twin" / "communication" / "schemas" / "fluid_message.json"
 
+_INLET_ALIASES = ("Inlet", "Fluid Temperature_Inlet", "Inlet(1)")
+_OUTLET_ALIASES = ("Outlet", "Fluid Temperatue_Outlet", "Fluid Temperature_Outlet", "Outlet(1)")
+
 # Matches H{height_mm}D{distance_mm}, e.g. H10D0, H290D165
 SENSOR_PATTERN = re.compile(r"H(?P<height>\d+(?:\.\d+)?)D(?P<distance>\d+(?:\.\d+)?)", re.IGNORECASE)
 
@@ -87,9 +90,28 @@ def _load_fluid_temps(
     outlet_col: str,
     time_col: str,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Load fluid inlet/outlet temps from Excel; returns (t_h, t_inlet, t_outlet) sorted by time."""
+    """Load fluid inlet/outlet temps from CSV or Excel; returns (t_h, t_inlet, t_outlet) sorted by time.
+
+    Column names fall back to known aliases, so both the shipped demo files
+    (``Inlet``/``Outlet``) and the original lab spreadsheets
+    (``Fluid Temperature_Inlet``/``Fluid Temperatue_Outlet``) load without flags.
+    """
     import pandas as pd
-    df = pd.read_excel(path)
+    if path.suffix.lower() in {".xlsx", ".xls"}:
+        df = pd.read_excel(path)
+    else:
+        df = pd.read_csv(path)
+    df.columns = [str(c).strip() for c in df.columns]
+
+    def _resolve(requested: str, aliases: tuple[str, ...]) -> str:
+        for name in (requested, *aliases):
+            if name in df.columns:
+                return name
+        return requested
+
+    time_col = _resolve(time_col, ("Time (h)", "Time(h)", "Time"))
+    inlet_col = _resolve(inlet_col, _INLET_ALIASES)
+    outlet_col = _resolve(outlet_col, _OUTLET_ALIASES)
     missing = [c for c in [time_col, inlet_col, outlet_col] if c not in df.columns]
     if missing:
         raise ValueError(
@@ -131,8 +153,8 @@ def replay_csv(
     limit: int | None,
     sleep_seconds: float,
     fluid_path: Path | None = None,
-    fluid_inlet_col: str = "Fluid Temperature_Inlet",
-    fluid_outlet_col: str = "Fluid Temperatue_Outlet",
+    fluid_inlet_col: str = "Inlet",
+    fluid_outlet_col: str = "Outlet",
     fluid_time_col: str = "Time (h)",
     fluid_exchange: str = FLUID_EXCHANGE,
     influx_url: str = "http://localhost:8086",
@@ -295,9 +317,9 @@ def main() -> None:
     parser.add_argument("--sleep-seconds", type=float, default=0.0, help="Sleep between rows.")
 
     fluid_group = parser.add_argument_group("fluid temperatures")
-    fluid_group.add_argument("--fluid-path", default=None, help="Path to the fluid inlet/outlet temperature XLSX file.")
-    fluid_group.add_argument("--fluid-inlet-col", default="Fluid Temperature_Inlet", help="Inlet temperature column name.")
-    fluid_group.add_argument("--fluid-outlet-col", default="Fluid Temperatue_Outlet", help="Outlet temperature column name.")
+    fluid_group.add_argument("--fluid-path", default=None, help="Path to the fluid inlet/outlet temperature file (CSV or XLSX).")
+    fluid_group.add_argument("--fluid-inlet-col", default="Inlet", help="Inlet temperature column name.")
+    fluid_group.add_argument("--fluid-outlet-col", default="Outlet", help="Outlet temperature column name.")
     fluid_group.add_argument("--fluid-time-col", default="Time (h)", help="Time column name in the fluid file.")
     fluid_group.add_argument("--fluid-exchange", default=FLUID_EXCHANGE, help="Fanout exchange for fluid messages (consumed by pipe_boundary).")
     fluid_group.add_argument("--site-id", default="default", help="Site ID tag written to InfluxDB.")

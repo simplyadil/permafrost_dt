@@ -1,0 +1,4 @@
+# Only needed to talk to the lab hardware (CR1000 datalogger, PolyScience circulator).
+# Install with:  pip install -e ".[hardware]"
+pyserial>=3.5
+pycampbellcr1000

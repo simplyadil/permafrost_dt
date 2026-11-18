@@ -573,8 +573,8 @@ class FEMSolver2D:
         ``bincount`` into that fixed pattern.
 
         The arithmetic is unchanged from the loop it replaced, which is kept in
-        ``software/tools/golden_reference.py`` and checked against this method to
-        machine precision by ``software/tools/verify_assembly_equivalence.py``.
+        ``golden_reference.py`` (development repo) and checked against this method to
+        machine precision by ``verify_assembly_equivalence.py`` (development repo).
         """
         m = self.material
 
@@ -744,7 +744,7 @@ class FEMSolver2D:
         The interpolated radius is always within one cell of the node-based one
         and never smaller, so this refines the previous answer rather than
         contradicting it -- a property checked by
-        ``software/tools/verify_front_resolution.py``.
+        ``verify_front_resolution.py`` (development repo).
         """
         threshold_k = self._thaw_threshold_k()
         if not np.any(self.T >= threshold_k):

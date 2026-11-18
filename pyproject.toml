@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "permafrost-dt"
+version = "1.0.0"
+description = "Digital twin for permafrost thaw monitoring and closed-loop heater control (FEM forecast, online inversion, predictive safety)."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Adil Lagrou" }]
+dynamic = ["dependencies", "optional-dependencies"]
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
+optional-dependencies.hardware = { file = ["requirements-hardware.txt"] }
+optional-dependencies.dev = { file = ["requirements-dev.txt"] }
+
+[tool.setuptools.packages.find]
+include = ["software*"]
+
+[tool.setuptools.package-data]
+"*" = ["*.json", "*.txt", "*.yml"]

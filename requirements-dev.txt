@@ -1,0 +1,2 @@
+# Test tooling.  Install with:  pip install -e ".[dev]"
+pytest>=7.0

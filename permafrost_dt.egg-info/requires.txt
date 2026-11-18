@@ -1,3 +1,0 @@
-pika
-influxdb-client
-pytest

@@ -722,23 +722,6 @@ class InfluxHelper:
             range_start=range_start,
         )
 
-    def query_pinn_residuals(
-        self,
-        *,
-        site: str = "default",
-        limit: int = 5000,
-        range_start: str = "-30d",
-    ) -> pd.DataFrame:
-        """Fetch PINN residual diagnostics."""
-
-        df = self._query_measurement(
-            "pinn_residuals",
-            site=site,
-            limit=limit,
-            range_start=range_start,
-        )
-        return self._coerce_depth_column(df)
-
     def query_inversion_parameters(
         self,
         *,

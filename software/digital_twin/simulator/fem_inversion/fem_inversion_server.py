@@ -670,8 +670,8 @@ class FEMInversionServer:
         The window is walked as a single trajectory with a reused solver, so the
         early time steps are integrated once rather than once per later
         observation time. The forward model this replaced is kept in
-        ``software/tools/golden_reference.py`` and checked against it by
-        ``software/tools/verify_inversion_equivalence.py``.
+        ``golden_reference.py`` (development repo) and checked against it by
+        ``verify_inversion_equivalence.py`` (development repo).
         """
         if self._window_model is None:
             self._window_model = WindowForwardModel(self.config_path)

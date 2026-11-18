@@ -7,8 +7,8 @@ it touches the FEM, so the whole file runs in well under a second.
 
 The fit itself is covered elsewhere, by two scripts that need the solver:
 
-* ``software/tools/verify_inversion_recovery.py``    -- does it find known parameters?
-* ``software/tools/verify_inversion_equivalence.py`` -- does the fast forward model
+* ``verify_inversion_recovery.py`` (development repo)    -- does it find known parameters?
+* ``verify_inversion_equivalence.py`` (development repo) -- does the fast forward model
   match the one it replaced?
 
 The distinction is worth keeping in mind when something breaks. A failure here
@@ -49,9 +49,10 @@ def make_server(**overrides) -> FEMInversionServer:
     """Server with no message bus or database attached.
 
     The constructor only assembles configuration objects, so this is cheap and
-    needs no running infrastructure.
+    needs no running infrastructure. Warm-up is disabled so gating tests see
+    only the gate they target; pass ``warmup_hours`` to exercise it.
     """
-    kwargs = dict(window_size=5, min_snapshots=5, min_sensors=3)
+    kwargs = dict(window_size=5, min_snapshots=5, min_sensors=3, warmup_hours=0.0)
     kwargs.update(overrides)
     return FEMInversionServer(**kwargs)
 

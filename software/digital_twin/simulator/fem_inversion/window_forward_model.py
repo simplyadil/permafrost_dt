@@ -21,7 +21,7 @@ k steps of one continuous march is the state a fresh k-step run reaches, since
 both start from the same seeded field and integrate the same equations with the
 same fixed boundary snapshot and step size. ``steps_for`` reproduces the
 rounding in ``FEMSolver2D.advance`` so the sample points line up exactly.
-Equivalence is checked by ``software/tools/verify_inversion_equivalence.py``.
+Equivalence is checked by ``verify_inversion_equivalence.py`` (development repo).
 """
 
 from __future__ import annotations
